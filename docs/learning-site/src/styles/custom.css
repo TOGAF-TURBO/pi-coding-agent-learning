@@ -1,0 +1,127 @@
+/* Dark theme as default */
+:root {
+  --sl-color-accent-low: #1a1a2e;
+  --sl-color-accent: #7c8aff;
+  --sl-color-accent-high: #b4c0ff;
+  --sl-color-white: #e8e8f0;
+  --sl-color-gray-1: #c8c8d8;
+  --sl-color-gray-2: #a0a0b0;
+  --sl-color-gray-3: #606078;
+  --sl-color-gray-4: #383850;
+  --sl-color-gray-5: #242438;
+  --sl-color-gray-6: #16162a;
+  --sl-color-black: #0e0e1e;
+  --sl-color-hairline-light: rgba(124, 138, 255, 0.1);
+  --sl-color-hairline: rgba(124, 138, 255, 0.15);
+  --sl-color-hairline-dark: rgba(124, 138, 255, 0.05);
+}
+
+/* Chinese text readability */
+:root {
+  --sl-text-xs: 0.8125rem;
+  --sl-text-sm: 0.9375rem;
+  --sl-text-base: 1.0625rem;
+  --sl-text-lg: 1.1875rem;
+  --sl-text-xl: 1.375rem;
+  --sl-text-2xl: 1.625rem;
+  --sl-text-3xl: 2rem;
+  --sl-text-4xl: 2.5rem;
+}
+
+body {
+  font-family: "HarmonyOS Sans SC", "Noto Sans SC", "PingFang SC", "Microsoft YaHei",
+    "WenQuanYi Micro Hei", sans-serif;
+}
+
+/* Better line-height for Chinese text */
+p, li, td, th {
+  line-height: 1.8;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  line-height: 1.4;
+  letter-spacing: 0.02em;
+}
+
+/* Custom code block styling */
+code {
+  font-family: "JetBrains Mono", "Fira Code", "Cascadia Code", "Source Code Pro",
+    "Consolas", "Monaco", monospace;
+  color: var(--sl-color-accent-high);
+  background: rgba(124, 138, 255, 0.08);
+  border-radius: 3px;
+  padding: 0.15em 0.4em;
+  font-size: 0.9em;
+}
+
+pre {
+  border: 1px solid var(--sl-color-hairline);
+  border-radius: 8px;
+}
+
+pre code {
+  color: var(--sl-color-gray-1);
+  background: transparent;
+  padding: 0;
+  border-radius: 0;
+}
+
+/* Table styling */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.5em 0;
+}
+
+thead th {
+  background: var(--sl-color-gray-5);
+  color: var(--sl-color-white);
+  font-weight: 600;
+  padding: 0.6em 0.8em;
+  text-align: left;
+  border-bottom: 2px solid var(--sl-color-accent);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 0.5em 0.8em;
+  border-bottom: 1px solid var(--sl-color-hairline-light);
+  vertical-align: top;
+}
+
+tbody tr:hover {
+  background: rgba(124, 138, 255, 0.04);
+}
+
+/* Blockquote styling */
+blockquote {
+  border-left: 3px solid var(--sl-color-accent);
+  background: rgba(124, 138, 255, 0.05);
+  padding: 0.6em 1em;
+  margin: 1em 0;
+  border-radius: 0 6px 6px 0;
+}
+
+blockquote p {
+  margin: 0;
+}
+
+/* Card tweaks */
+.card {
+  border: 1px solid var(--sl-color-hairline);
+  transition: border-color 0.2s;
+}
+
+.card:hover {
+  border-color: var(--sl-color-accent);
+}
+
+/* Steps tweaks */
+sl-steps {
+  --sl-color-accent: var(--sl-color-accent);
+}
+
+/* Strong emphasis for learning goals in bold paragraphs */
+p > strong:first-child:last-child {
+  color: var(--sl-color-accent-high);
+}

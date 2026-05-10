@@ -1,0 +1,22 @@
+{
+  "name": "pi-learning-site",
+  "private": true,
+  "type": "module",
+  "description": "pi 源代码阅读路线图 — 交互式学习站点，14 天渐进式源码学习 + API 参考文档",
+  "scripts": {
+    "dev": "astro dev --port 3000",
+    "build": "node ../../scripts/generate-api-docs.mjs && astro build",
+    "preview": "astro preview --port 3000",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/lit": "^4.3.0",
+    "@astrojs/starlight": "^0.39.2",
+    "astro": "^6.2.2",
+    "lit": "^3.3.2",
+    "sharp": "^0.34.5"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.2"
+  }
+}

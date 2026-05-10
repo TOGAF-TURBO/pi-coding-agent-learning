@@ -1,0 +1,37 @@
+---
+title: "pi 源代码阅读路线图"
+---
+
+**14 天渐进式源码学习**，从底层类型定义到顶层 Provider 实现。
+
+### 四个学习阶段
+
+**L1 入门** — Day 1-3
+
+理解核心类型体系（`types.ts`）、LLM 调用流程（`stream.ts`）、模型查找（`models.ts`）
+
+**L2 熟练** — Day 4-6
+
+理解 Agent 有状态封装（`agent.ts`）、双层循环结构（`agent-loop.ts`）、工具执行机制
+
+**L3 精通** — Day 7-10
+
+理解扩展系统（`extensions/types.ts`）、会话持久化（`session-manager.ts`）、上下文压缩（`compaction.ts`）、消息转换（`transform-messages.ts`）
+
+**L4 专家** — Day 11-14
+
+理解 TUI 渲染引擎（`tui.ts`）、编辑器组件（`editor.ts`）、RPC 协议（`rpc-mode.ts`）、Provider 实现对比
+
+### 如何使用
+
+1. 从左侧导航选择学习日期
+2. 按阅读清单顺序阅读源文件
+3. 每天学完运行对应的验证示例
+4. 在 [API 参考](/api/pi-ai) 中查阅函数文档
+
+### 相关资源
+
+- [术语索引](../../terminology-index.md)
+- [能力分析报告](../../capability-analysis.md)
+- [能力路径分析](../../capability-paths.md)
+- [学习沙箱示例](https://github.com/earendil-works/pi-mono/tree/main/packages/coding-agent/examples/learning)
