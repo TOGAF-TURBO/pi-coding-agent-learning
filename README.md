@@ -4,6 +4,11 @@
   </a>
 </p>
 <p align="center">
+  <a href="https://pi.dev">
+    <img alt="微信交流群" src="群信息.jpg" width="128">
+  </a>
+</p>
+<p align="center">
   <a href="https://discord.com/invite/3cU7Bz4UPx"><img alt="Discord" src="https://img.shields.io/badge/discord-community-5865F2?style=flat-square&logo=discord&logoColor=white" /></a>
 </p>
 <p align="center">
