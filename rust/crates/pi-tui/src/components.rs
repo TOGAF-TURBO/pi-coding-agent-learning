@@ -298,32 +298,29 @@ pub fn render_editor(f: &mut ratatui::Frame, area: Rect, input: &str, cursor: bo
 }
 
 /// 渲染 footer 区域。
-pub fn render_footer(f: &mut ratatui::Frame, area: Rect, is_running: bool) {
-    let spans = if is_running {
-        vec![
-            Span::styled(" Esc", Style::default().fg(Color::Yellow)),
-            Span::styled(" Cancel  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(" Ctrl+C", Style::default().fg(Color::Cyan)),
-            Span::styled(" Quit", Style::default().fg(Color::DarkGray)),
-        ]
-    } else {
-        vec![
-            Span::styled(" Ctrl+O", Style::default().fg(Color::Cyan)),
-            Span::styled(" Send  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(" Ctrl+C", Style::default().fg(Color::Cyan)),
-            Span::styled(" Quit  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(" PgUp/PgDn", Style::default().fg(Color::Cyan)),
-            Span::styled(" Scroll  ", Style::default().fg(Color::DarkGray)),
-            Span::styled(" Ctrl+S", Style::default().fg(Color::Cyan)),
-            Span::styled(" Sessions", Style::default().fg(Color::DarkGray)),
-        ]
-    };
+pub fn render_footer(f: &mut ratatui::Frame, area: Rect, _is_running: bool, hints: &[(&'static str, String)]) {
+    let mut spans = Vec::new();
+    for (tag, text) in hints {
+        if *tag == "key" {
+            spans.push(Span::styled(text.clone(), Style::default().fg(Color::Cyan)));
+        } else {
+            spans.push(Span::styled(text.clone(), Style::default().fg(Color::DarkGray)));
+        }
+    }
     let para = Paragraph::new(Line::from(spans));
     f.render_widget(para, area);
 }
 
 /// 渲染全部五个区域。
-pub fn render_all(f: &mut ratatui::Frame, regions: LayoutRegions, state: &AppState, input: &str, scroll_offset: usize, session_id: &str) {
+pub fn render_all(
+    f: &mut ratatui::Frame,
+    regions: LayoutRegions,
+    state: &AppState,
+    input: &str,
+    scroll_offset: usize,
+    session_id: &str,
+    footer_hints: &[(&'static str, String)],
+) {
     let footer = state.footer.read();
     let model = footer.model.clone();
     let provider = footer.provider.clone();
@@ -334,7 +331,7 @@ pub fn render_all(f: &mut ratatui::Frame, regions: LayoutRegions, state: &AppSta
     render_chat(f, regions.chat, state, scroll_offset);
     render_status(f, regions.status, state);
     render_editor(f, regions.editor, input, true, is_running);
-    render_footer(f, regions.footer, is_running);
+    render_footer(f, regions.footer, is_running, footer_hints);
 }
 
 /// Leaked string for static lifetime (used in status display).

@@ -36,8 +36,9 @@ use crate::app::{AgentState, AppState};
 use crate::components;
 use crate::engine::TuiEngine;
 use crate::event::Event;
-use crate::keybinding::{self, Action};
+use crate::keybinding::{Action, KeyBindings};
 use crate::layout;
+use crate::selector;
 
 /// Agent 命令。
 enum Command {
@@ -60,9 +61,14 @@ pub struct InteractiveConfig {
     pub session_dir: PathBuf,
     /// 预加载的 session（可能包含历史消息）。
     pub session: Option<JsonlSession>,
+    /// 可用模型列表（provider, model_id, display_name）。
+    pub available_models: Vec<(String, String, String)>,
+    /// 快捷键配置。
+    pub keybindings: KeyBindings,
 }
 
 /// Agent 运行时上下文 — 避免传 9 个参数。
+#[derive(Clone)]
 pub struct AgentContext {
     pub model: String,
     pub api_key: String,
@@ -70,6 +76,7 @@ pub struct AgentContext {
     pub base_url: Option<String>,
     pub system_prompt: String,
     pub cwd: PathBuf,
+    pub provider: String,
 }
 
 /// 运行交互模式。
@@ -79,14 +86,18 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let tools = make_tools(&cfg.cwd);
     let session_dir = cfg.session_dir.clone();
 
-    let ctx = Arc::new(AgentContext {
+    let mut ctx = Arc::new(AgentContext {
         model: cfg.model.clone(),
         api_key: cfg.api_key.clone(),
         api_type: cfg.api_type.clone(),
         base_url: cfg.base_url.clone(),
         system_prompt: cfg.system_prompt.clone(),
         cwd: cfg.cwd.clone(),
+        provider: cfg.provider.clone(),
     });
+
+    // 可用模型列表（用于模型选择器）
+    let cfg_models = cfg.available_models.clone();
 
     // 使用预加载 session 或创建新的
     let mgr = SessionManager::new(&session_dir);
@@ -130,30 +141,37 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
         }
     });
 
-    // TUI 事件循环
+    // 快捷键配置（由 CLI 层加载 ~/.piso/keybindings.json）
+    let keybindings = cfg.keybindings;
     let mut engine = TuiEngine::init()?;
     let mut input = crate::input::InputEditor::new();
     let mut scroll_offset: usize = 0;
 
     // Overlay 状态
-    let mut overlay: Option<crate::selector::Selector> = None;
+    let mut overlay: Option<selector::Selector> = None;
+    /// Overlay 类型（用于区分回调行为）
+    enum OverlayKind {
+        SessionPicker,
+        ModelPicker,
+    }
+    let mut overlay_kind: Option<OverlayKind> = None;
 
     loop {
         let sid = session_id_display.clone();
+        let hints = keybindings.footer_hints(!matches!(state.agent_state(), AgentState::Idle));
         engine.terminal().draw(|f| {
             let size = f.area();
             let regions = layout::calculate(size, 5);
-            components::render_all(f, regions, &state, input.text(), scroll_offset, &sid);
+            components::render_all(f, regions, &state, input.text(), scroll_offset, &sid, &hints);
 
             // 渲染 overlay（如果有）
             if let Some(ref mut sel) = overlay {
-                // 在 chat 区域中央显示，占 60% 宽度
                 let w = (size.width as f32 * 0.6) as u16;
                 let h = (size.height as f32 * 0.5).min((sel.items.len() + 2) as f32) as u16;
                 let x = (size.width.saturating_sub(w)) / 2;
                 let y = (size.height.saturating_sub(h)) / 2;
                 let sel_area = ratatui::layout::Rect::new(x, y, w, h);
-                crate::selector::Selector::render(f, sel_area, sel);
+                selector::Selector::render(f, sel_area, sel);
             }
         })?;
 
@@ -170,27 +188,51 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                     KeyCode::Down => sel.down(),
                     KeyCode::Enter => {
                         if let Some(id) = sel.selected_id().to_owned() {
-                            // 切换会话
-                            let mgr = SessionManager::new(&session_dir);
-                            match mgr.open(id).await {
-                                Ok(new_session) => {
-                                    // 停止 agent 并替换 session
-                                    // TODO: 需要协调 agent task
-                                    // 简化版：仅加载历史到 chat
-                                    state.entries.write().clear();
-                                    load_history(&new_session, &state);
-                                    // 更新显示的 session id
-                                    session_id_display = new_session.id().to_string();
+                            match overlay_kind {
+                                Some(OverlayKind::SessionPicker) => {
+                                    let mgr = SessionManager::new(&session_dir);
+                                    match mgr.open(id).await {
+                                        Ok(new_session) => {
+                                            state.entries.write().clear();
+                                            load_history(&new_session, &state);
+                                            session_id_display = new_session.id().to_string();
+                                        }
+                                        Err(e) => {
+                                            state.set_state(AgentState::Error(format!("Session: {e}")));
+                                        }
+                                    }
                                 }
-                                Err(e) => {
-                                    state.set_state(AgentState::Error(format!("Session: {e}")));
+                                Some(OverlayKind::ModelPicker) => {
+                                    // id 格式: "provider:model_id"
+                                    let parts: Vec<&str> = id.splitn(2, ':').collect();
+                                    if parts.len() == 2 {
+                                        let new_provider = parts[0].to_string();
+                                        let new_model = parts[1].to_string();
+                                        // 更新 footer 显示
+                                        {
+                                            let mut f = state.footer.write();
+                                            f.model = new_model.clone();
+                                            f.provider = new_provider.clone();
+                                        }
+                                        // 更新 agent context
+                                        let mut old_ctx = Arc::try_unwrap(ctx)
+                                            .unwrap_or_else(|arc| (*arc).clone());
+                                        old_ctx.model = new_model;
+                                        old_ctx.provider = new_provider;
+                                        // TODO: 需要从新 provider 获取 api_key/api_type/base_url
+                                        // 当前简化：只切换同一 provider 下的 model
+                                        ctx = Arc::new(old_ctx);
+                                    }
                                 }
+                                None => {}
                             }
                         }
                         overlay = None;
+                        overlay_kind = None;
                     }
                     KeyCode::Esc => {
                         overlay = None;
+                        overlay_kind = None;
                     }
                     _ => {}
                 }
@@ -201,7 +243,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
         // 正常模式
         match event {
             Event::Key(key) => {
-                let action = keybinding::match_key(&key);
+                let action = keybindings.match_key(&key);
                 let is_running = !matches!(state.agent_state(), AgentState::Idle);
 
                 match action {
@@ -228,19 +270,33 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                         scroll_offset = scroll_offset.saturating_sub(5);
                     }
                     Action::OpenSessionPicker => {
-                        // 打开会话选择器
                         let mgr = SessionManager::new(&session_dir);
                         if let Ok(sessions) = mgr.list().await {
-                            let items: Vec<crate::selector::SelectItem> = sessions.into_iter().map(|s| {
-                                crate::selector::SelectItem {
+                            let items: Vec<selector::SelectItem> = sessions.into_iter().map(|s| {
+                                selector::SelectItem {
                                     id: s.id.clone(),
                                     label: s.id.clone(),
                                     detail: format!("{} msgs, {}", s.message_count, s.cwd),
                                 }
                             }).collect();
                             if !items.is_empty() {
-                                overlay = Some(crate::selector::Selector::new("Sessions", items));
+                                overlay = Some(selector::Selector::new("Sessions", items));
+                                overlay_kind = Some(OverlayKind::SessionPicker);
                             }
+                        }
+                    }
+                    Action::OpenModelPicker => {
+                        let models = cfg_models.clone();
+                        if !models.is_empty() {
+                            let items: Vec<selector::SelectItem> = models.into_iter().map(|(prov, mid, name)| {
+                                selector::SelectItem {
+                                    id: format!("{}:{}", prov, mid),
+                                    label: name.clone(),
+                                    detail: prov.to_string(),
+                                }
+                            }).collect();
+                            overlay = Some(selector::Selector::new("Models", items));
+                            overlay_kind = Some(OverlayKind::ModelPicker);
                         }
                     }
                     Action::None => {

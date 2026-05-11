@@ -39,6 +39,17 @@ pub struct ProviderConfig {
     pub base_url: Option<String>,
     #[serde(default)]
     pub api_key: Option<String>,
+    /// 该 provider 下的模型列表。
+    #[serde(default)]
+    pub models: Vec<ModelInfo>,
+}
+
+/// 模型信息。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelInfo {
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
 }
 
 /// 认证 + Provider 配置存储。
@@ -140,6 +151,19 @@ fn load_models_json(
             api_key: config.get("apiKey")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            models: config.get("models")
+                .and_then(|v| v.as_array())
+                .map(|arr| {
+                    arr.iter().filter_map(|m| {
+                        let id = m.get("id")?.as_str()?.to_string();
+                        let name = m.get("name")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or(&id)
+                            .to_string();
+                        Some(ModelInfo { id, name })
+                    }).collect()
+                })
+                .unwrap_or_default(),
         };
 
         if let Some(key) = &pc.api_key {

@@ -369,6 +369,15 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let session = resolve_session(&cli, &cfg, &cwd, &cwd_str).await?;
     let session_dir = config::session_dir_for_cwd(&cfg, &cwd);
 
+    // 收集可用模型列表（用于模型选择器）
+    let available_models = collect_available_models(&auth);
+
+    // 加载快捷键
+    let kb_path = config::config_dir()
+        .map(|d| d.join("keybindings.json"))
+        .unwrap_or_else(|| cwd.join("keybindings.json"));
+    let keybindings = pi_tui::KeyBindings::load(&kb_path);
+
     let tui_cfg = pi_tui::InteractiveConfig {
         model,
         provider,
@@ -379,6 +388,8 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         session_dir,
         system_prompt: prompt_builder.build(),
         session: Some(session),
+        available_models,
+        keybindings,
     };
 
     pi_tui::run_interactive(tui_cfg).await
@@ -475,6 +486,25 @@ async fn run_list_models(_cli: Cli) -> Result<()> {
     }
 
     Ok(())
+}
+
+/// 收集所有可用模型（用于模型选择器）。
+fn collect_available_models(auth: &AuthStorage) -> Vec<(String, String, String)> {
+    let mut models = Vec::new();
+    for prov_name in auth.configured_providers() {
+        if let Some(pc) = auth.get_provider(&prov_name) {
+            for m in &pc.models {
+                models.push((prov_name.clone(), m.id.clone(), m.name.clone()));
+            }
+        }
+    }
+    // 如果 models.json 没有模型列表，用默认模型 ID
+    if models.is_empty() {
+        for prov_name in auth.available_providers() {
+            models.push((prov_name.clone(), "default".to_string(), prov_name.clone()));
+        }
+    }
+    models
 }
 
 async fn run_list_sessions() -> Result<()> {
