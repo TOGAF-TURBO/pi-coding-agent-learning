@@ -90,17 +90,17 @@ pub struct Cli {
     #[arg(long)]
     pub no_context_files: bool,
 
-    /// Load a specific skill by name.
+    /// Load a skill by name (can be repeated).
     #[arg(long)]
-    pub skill: Option<String>,
+    pub skill: Option<Vec<String>>,
 
-    /// Load a specific theme by name.
+    /// Load a theme by name (can be repeated).
     #[arg(long)]
-    pub theme: Option<String>,
+    pub theme: Option<Vec<String>>,
 
-    /// Use a specific prompt template.
+    /// Use a prompt template by name (can be repeated).
     #[arg(long)]
-    pub prompt_template: Option<String>,
+    pub prompt_template: Option<Vec<String>>,
 
     /// List available models.
     #[arg(long)]
@@ -261,7 +261,15 @@ mod tests {
         let cli = Cli::try_parse_from(["piso", "--skill", "code-review"]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
-        assert_eq!(cli.skill.as_deref(), Some("code-review"));
+        assert_eq!(cli.skill.unwrap(), vec!["code-review"]);
+    }
+
+    #[test]
+    fn parse_skill_multiple() {
+        let cli = Cli::try_parse_from(["piso", "--skill", "a", "--skill", "b"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.skill.unwrap(), vec!["a", "b"]);
     }
 
     #[test]
@@ -269,7 +277,15 @@ mod tests {
         let cli = Cli::try_parse_from(["piso", "--theme", "dracula"]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
-        assert_eq!(cli.theme.as_deref(), Some("dracula"));
+        assert_eq!(cli.theme.unwrap(), vec!["dracula"]);
+    }
+
+    #[test]
+    fn parse_theme_multiple() {
+        let cli = Cli::try_parse_from(["piso", "--theme", "dark", "--theme", "custom"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.theme.unwrap(), vec!["dark", "custom"]);
     }
 
     #[test]
@@ -277,6 +293,6 @@ mod tests {
         let cli = Cli::try_parse_from(["piso", "--prompt-template", "review"]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
-        assert_eq!(cli.prompt_template.as_deref(), Some("review"));
+        assert_eq!(cli.prompt_template.unwrap(), vec!["review"]);
     }
 }
