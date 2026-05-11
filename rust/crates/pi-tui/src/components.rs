@@ -336,7 +336,7 @@ pub fn render_editor(
             );
         f.render_widget(para, area);
         if cursor && !is_running {
-            f.set_cursor_position((area.x + 1, area.y + 1));
+            f.set_cursor_position((area.x, area.y + 1));
         }
         return;
     }
@@ -381,7 +381,7 @@ pub fn render_editor(
         }
 
         f.set_cursor_position((
-            area.x + 1 + col as u16,
+            area.x + col as u16,
             area.y + 1 + row.min(area.height.saturating_sub(2) as usize) as u16,
         ));
     }
