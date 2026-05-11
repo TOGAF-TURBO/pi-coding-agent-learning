@@ -42,43 +42,59 @@ impl TuiEngine {
 
         let tx = event_tx.clone();
         let reader_handle = tokio::spawn(async move {
+            // 用一个独立的 spawn_blocking task 持续 poll 事件
+            // 比 select! + spawn_blocking 更可靠
+            let tx = tx;
             let mut tick = tokio::time::interval(TICK_RATE);
 
+            // 专用线程做 crossterm 事件读取
+            let (key_tx, mut key_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
+            let key_tx = key_tx;
+            std::thread::spawn(move || {
+                loop {
+                    if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                        match event::read() {
+                            Ok(CrosstermEvent::Key(key)) => {
+                                if key.kind == event::KeyEventKind::Release {
+                                    continue;
+                                }
+                                if key_tx.send(Event::Key(key)).is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(CrosstermEvent::Mouse(mouse)) => {
+                                if key_tx.send(Event::Mouse(mouse)).is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(CrosstermEvent::Resize(w, h)) => {
+                                if key_tx.send(Event::Resize(w, h)).is_err() {
+                                    break;
+                                }
+                            }
+                            Ok(_) => {}
+                            Err(_) => break,
+                        }
+                    }
+                }
+            });
+
+            // 主循环：合并线程事件和 tick
             loop {
                 tokio::select! {
+                    ev = key_rx.recv() => {
+                        match ev {
+                            Some(event) => {
+                                if tx.send(event).is_err() {
+                                    break;
+                                }
+                            }
+                            None => break,
+                        }
+                    }
                     _ = tick.tick() => {
                         if tx.send(Event::Tick).is_err() {
                             break;
-                        }
-                    }
-                    _ = tokio::task::spawn_blocking(|| {
-                        // 阻塞等待事件
-                        let _ = event::read();
-                    }) => {
-                        // drain 所有 pending 事件
-                        while event::poll(Duration::from_millis(0)).unwrap_or(false) {
-                            match event::read() {
-                                Ok(CrosstermEvent::Key(key)) => {
-                                    if key.kind == event::KeyEventKind::Release {
-                                        continue;
-                                    }
-                                    if tx.send(Event::Key(key)).is_err() {
-                                        return;
-                                    }
-                                }
-                                Ok(CrosstermEvent::Mouse(mouse)) => {
-                                    if tx.send(Event::Mouse(mouse)).is_err() {
-                                        return;
-                                    }
-                                }
-                                Ok(CrosstermEvent::Resize(w, h)) => {
-                                    if tx.send(Event::Resize(w, h)).is_err() {
-                                        return;
-                                    }
-                                }
-                                Ok(_) => {}
-                                Err(_) => return,
-                            }
                         }
                     }
                 }
