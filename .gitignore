@@ -40,3 +40,7 @@ plans/
 .pi/hf-sessions/
 .pi/hf-sessions-backup/
 collect.sh
+
+# Rust / piso
+rust/target/
+**/*.rs.bk

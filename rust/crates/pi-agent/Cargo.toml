@@ -1,0 +1,21 @@
+[package]
+name = "pi-agent"
+description = "Agent loop — orchestrates LLM calls, tool execution, and session state"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+pi-types = { path = "../pi-types" }
+pi-llm = { path = "../pi-llm" }
+pi-session = { path = "../pi-session" }
+pi-tools = { path = "../pi-tools" }
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+async-trait = { workspace = true }
+anyhow = { workspace = true }
+chrono = { workspace = true }
+futures = { workspace = true }
