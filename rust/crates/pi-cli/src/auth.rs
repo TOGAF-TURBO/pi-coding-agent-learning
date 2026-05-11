@@ -1,10 +1,10 @@
-//! 认证管理。
+//! 认证与 Provider 配置管理。
 
 use std::collections::HashMap;
-use std::path::{Path, PathBuf};
+use std::path::Path;
 
-use anyhow::{Context, Result};
-use serde_json::Value;
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
 
 /// 环境变量 → provider 映射。
 const ENV_KEY_MAP: &[(&str, &str)] = &[
@@ -21,15 +21,32 @@ const ENV_KEY_MAP: &[(&str, &str)] = &[
     ("XAI_API_KEY", "xai"),
 ];
 
-/// 认证存储 — 从多个来源解析 API Key。
+/// Provider 配置（从 models.json 加载）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProviderConfig {
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub api: String,
+    #[serde(default)]
+    pub base_url: Option<String>,
+    #[serde(default)]
+    pub api_key: Option<String>,
+}
+
+/// 认证 + Provider 配置存储。
 pub struct AuthStorage {
+    /// provider → API Key
     keys: HashMap<String, String>,
+    /// provider → ProviderConfig（来自 models.json）
+    providers: HashMap<String, ProviderConfig>,
 }
 
 impl AuthStorage {
-    /// 从环境变量和配置文件加载所有可用的 API Key。
+    /// 从环境变量和配置文件加载所有可用的 API Key 和 provider 配置。
     pub fn load(config_dir: Option<&Path>) -> Result<Self> {
         let mut keys = HashMap::new();
+        let mut providers = HashMap::new();
 
         // 1. 环境变量
         for (var, provider) in ENV_KEY_MAP {
@@ -40,8 +57,8 @@ impl AuthStorage {
             }
         }
 
-        // 2. auth.json
         if let Some(dir) = config_dir {
+            // 2. auth.json
             let auth_path = dir.join("auth.json");
             if auth_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&auth_path) {
@@ -53,18 +70,28 @@ impl AuthStorage {
                 }
             }
 
-            // 3. models.json 中的 apiKey
+            // 3. models.json 中的 provider 配置
             let models_path = dir.join("agent").join("models.json");
             if models_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&models_path) {
-                    if let Ok(doc) = serde_json::from_str::<Value>(&content) {
-                        if let Some(providers) = doc.get("providers").and_then(|p| p.as_object()) {
-                            for (name, config) in providers {
-                                if let Some(key) = config.get("apiKey").and_then(|v| v.as_str()) {
+                    if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&content) {
+                        if let Some(provs) = doc.get("providers").and_then(|p| p.as_object()) {
+                            for (name, config) in provs {
+                                let pc = ProviderConfig {
+                                    name: name.clone(),
+                                    api: config.get("api").and_then(|v| v.as_str()).unwrap_or("openai-completions").to_string(),
+                                    base_url: config.get("baseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                    api_key: config.get("apiKey").and_then(|v| v.as_str()).map(|s| s.to_string()),
+                                };
+
+                                // 注册 API Key
+                                if let Some(key) = &pc.api_key {
                                     if !key.is_empty() {
-                                        keys.insert(name.clone(), key.to_string());
+                                        keys.insert(name.clone(), key.clone());
                                     }
                                 }
+
+                                providers.insert(name.clone(), pc);
                             }
                         }
                     }
@@ -72,7 +99,7 @@ impl AuthStorage {
             }
         }
 
-        Ok(Self { keys })
+        Ok(Self { keys, providers })
     }
 
     /// 获取指定 provider 的 API Key。
@@ -80,8 +107,18 @@ impl AuthStorage {
         self.keys.get(provider).map(|s| s.as_str())
     }
 
+    /// 获取 provider 配置。
+    pub fn get_provider(&self, provider: &str) -> Option<&ProviderConfig> {
+        self.providers.get(provider)
+    }
+
     /// 列出有 API Key 的 provider。
     pub fn available_providers(&self) -> Vec<String> {
         self.keys.keys().cloned().collect()
+    }
+
+    /// 列出所有已配置的 provider（来自 models.json）。
+    pub fn configured_providers(&self) -> Vec<String> {
+        self.providers.keys().cloned().collect()
     }
 }

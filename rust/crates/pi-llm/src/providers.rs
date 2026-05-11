@@ -5,9 +5,8 @@
 //! 通过 HTTP 直接调用 Anthropic Messages API，使用 SSE 解析流式响应。
 //! 不依赖 Anthropic SDK，保持最小依赖。
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{Result, anyhow};
 use async_trait::async_trait;
-use futures::{Stream, StreamExt};
 use reqwest::Client;
 use serde_json::{json, Value};
 
@@ -156,7 +155,17 @@ impl LlmDriver for AnthropicDriver {
                         }
                         "content_block_stop" => {
                             if current_block_type.as_deref() == Some("tool_use") {
-                                yield Ok(StreamEvent::ToolCallEnd { index: current_block_index });
+                                if current_block_index < tool_calls.len() {
+                                    let tc = &tool_calls[current_block_index];
+                                    let input: Value = serde_json::from_str(&tc.input_json)
+                                        .unwrap_or(Value::Null);
+                                    yield Ok(StreamEvent::ToolCallEnd {
+                                        index: current_block_index,
+                                        id: tc.id.clone(),
+                                        name: tc.name.clone(),
+                                        input,
+                                    });
+                                }
                             }
                         }
                         "message_delta" => {
@@ -227,6 +236,12 @@ fn build_anthropic_request(req: &CompletionRequest) -> Value {
                                 "media_type": img.media_type,
                                 "data": img.data,
                             }
+                        }),
+                        pi_types::message::ContentBlock::ToolResult(r) => json!({
+                            "type": "tool_result",
+                            "tool_use_id": r.tool_use_id,
+                            "content": r.content,
+                            "is_error": r.is_error,
                         }),
                         _ => json!({"type": "text", "text": "[unsupported]"}),
                     }
@@ -340,5 +355,63 @@ impl SseLineParser {
                 return Some((event_type, data));
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sse_parser_extracts_events() {
+        let mut parser = SseLineParser::new();
+        parser.feed(b"event: message_start\ndata: {\"message\":{\"usage\":{\"input_tokens\":10}}}\n\nevent: content_block_start\ndata: {\"index\":0,\"content_block\":{\"type\":\"text\"}}\n\n");
+
+        let (t1, d1) = parser.next_event().unwrap();
+        assert_eq!(t1, "message_start");
+        assert!(d1.contains("input_tokens"));
+
+        let (t2, d2) = parser.next_event().unwrap();
+        assert_eq!(t2, "content_block_start");
+        assert!(d2.contains("text"));
+
+        assert!(parser.next_event().is_none());
+    }
+
+    #[test]
+    fn sse_parser_handles_incremental_chunks() {
+        let mut parser = SseLineParser::new();
+        // Feed in small chunks
+        parser.feed(b"event: message_start\n");
+        assert!(parser.next_event().is_none());
+        parser.feed(b"data: {\"ok\":true}\n\n");
+        let (t, d) = parser.next_event().unwrap();
+        assert_eq!(t, "message_start");
+        assert_eq!(d, "{\"ok\":true}");
+    }
+
+    #[test]
+    fn build_anthropic_request_includes_tools() {
+        let req = CompletionRequest {
+            model: "claude-sonnet-4".to_string(),
+            system_prompt: Some("You are helpful".to_string()),
+            messages: vec![pi_types::message::Message::user_text("hello")],
+            tools: vec![pi_types::tool::ToolDefinition {
+                name: "bash".to_string(),
+                description: "Execute a shell command".to_string(),
+                parameters: serde_json::json!({"type": "object", "properties": {"command": {"type": "string"}}}),
+                requires_approval: false,
+            }],
+            thinking_enabled: false,
+            thinking_budget: None,
+            max_tokens: 4096,
+            api_key: String::new(),
+            base_url: None,
+        };
+        let body = build_anthropic_request(&req);
+        assert_eq!(body["model"], "claude-sonnet-4");
+        assert_eq!(body["system"], "You are helpful");
+        assert!(body["tools"].as_array().unwrap().len() == 1);
+        assert_eq!(body["tools"][0]["name"], "bash");
     }
 }

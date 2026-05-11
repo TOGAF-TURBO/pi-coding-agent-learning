@@ -2,7 +2,6 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::Result;
 use serde::{Deserialize, Serialize};
 
 /// 应用配置。

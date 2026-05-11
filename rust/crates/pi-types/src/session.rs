@@ -8,7 +8,6 @@
 //! - 后续每行是一个 SessionEntry
 //! - Rust 写入的 JSONL 文件必须能被 TS 版本读取，反之亦然
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // ─── 会话头 ────────────────────────────────────────────────────
@@ -32,7 +31,7 @@ impl SessionHeader {
             entry_type: "session".to_string(),
             version: 3,
             id: id.into(),
-            timestamp: Utc::now().to_rfc3339(),
+            timestamp: chrono::Utc::now().to_rfc3339(),
             cwd: cwd.into(),
             parent_session: None,
         }

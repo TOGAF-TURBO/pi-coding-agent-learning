@@ -6,6 +6,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use crate::driver::LlmDriver;
+use crate::openai::OpenAiDriver;
 use crate::providers::AnthropicDriver;
 
 /// Provider 注册表。
@@ -19,6 +20,14 @@ impl ProviderRegistry {
         // 注册内置 provider
         let anthropic: Arc<dyn LlmDriver> = Arc::new(AnthropicDriver::new());
         drivers.insert("anthropic".to_string(), anthropic);
+
+        let openai: Arc<dyn LlmDriver> = Arc::new(OpenAiDriver::new());
+        drivers.insert("openai".to_string(), openai);
+
+        // OpenAI-compatible providers（共享 OpenAI driver）
+        for name in &["glm", "deepseek", "groq", "openrouter", "together", "fireworks", "mistral", "xai"] {
+            drivers.insert((*name).to_string(), Arc::new(OpenAiDriver::new()));
+        }
 
         Self {
             drivers: RwLock::new(drivers),

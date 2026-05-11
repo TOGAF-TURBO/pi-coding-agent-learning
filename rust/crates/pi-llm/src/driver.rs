@@ -5,7 +5,7 @@ use futures::Stream;
 use serde::{Deserialize, Serialize};
 use std::pin::Pin;
 
-use pi_types::message::{ContentBlock, StopReason, Usage};
+use pi_types::message::{StopReason, Usage};
 use pi_types::tool::ToolDefinition;
 
 /// 发送给 LLM 的完成请求。
@@ -45,9 +45,14 @@ pub enum StreamEvent {
     /// 工具调用输入增量（JSON 片段）。
     #[serde(rename = "tool_call_delta")]
     ToolCallDelta { index: usize, input: String },
-    /// 工具调用结束。
+    /// 工具调用结束（输入 JSON 已完整累积）。
     #[serde(rename = "tool_call_end")]
-    ToolCallEnd { index: usize },
+    ToolCallEnd {
+        index: usize,
+        id: String,
+        name: String,
+        input: serde_json::Value,
+    },
     /// 用量统计。
     #[serde(rename = "usage")]
     Usage(Usage),

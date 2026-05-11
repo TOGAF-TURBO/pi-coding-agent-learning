@@ -8,7 +8,6 @@
 //! - 支持 thinking content（扩展思考）和 image content
 //! - JSON 序列化格式与 TS 版本兼容（serde rename_all = "camelCase"）
 
-use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 // ─── 思考级别 ──────────────────────────────────────────────────
