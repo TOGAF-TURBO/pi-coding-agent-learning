@@ -305,10 +305,12 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
 }
 
 /// 渲染 editor 区域 — 多行支持。
+/// `cursor_pos` — 光标在文本中的字节偏移。
 pub fn render_editor(
     f: &mut ratatui::Frame,
     area: Rect,
     input: &str,
+    cursor_pos: usize,
     cursor: bool,
     is_running: bool,
 ) {
@@ -316,7 +318,7 @@ pub fn render_editor(
         let hint = if is_running {
             "Waiting for agent..."
         } else {
-            "Type a message... (Ctrl+O to send, Enter for newline)"
+            "Type a message... (Enter to send, Shift+Enter for newline)"
         };
         let para = Paragraph::new(hint)
             .style(Style::default().fg(Color::DarkGray))
@@ -326,6 +328,9 @@ pub fn render_editor(
                     .border_style(Style::default().fg(Color::DarkGray)),
             );
         f.render_widget(para, area);
+        if cursor && !is_running {
+            f.set_cursor_position((area.x + 1, area.y + 1));
+        }
         return;
     }
 
@@ -342,23 +347,37 @@ pub fn render_editor(
                 })),
         );
 
+    f.render_widget(para, area);
+
     if cursor && !is_running {
-        // 计算光标在多行文本中的位置
-        let text_before_cursor = input;
-        let mut row: u16 = 0;
-        let area_width = area.width.saturating_sub(2); // borders
-        for line in text_before_cursor.lines() {
-            row += (unicode_width_str(line) as u16 + area_width - 1) / area_width.max(1);
+        // 计算光标位置（在 render_widget 之后，否则被覆盖）
+        let before = &input[..cursor_pos];
+        let area_width = area.width.saturating_sub(2) as usize;
+        let area_width = area_width.max(1);
+
+        // 逐字符计算光标的 (row, col)
+        let mut row: usize = 0;
+        let mut col: usize = 0;
+
+        for ch in before.chars() {
+            if ch == '\n' {
+                row += 1;
+                col = 0;
+            } else {
+                let w = unicode_width(ch);
+                col += w;
+                if col >= area_width {
+                    row += 1;
+                    col = w; // 宽字符换行后从自身宽度开始
+                }
+            }
         }
-        let last_line = text_before_cursor.lines().last().unwrap_or("");
-        let col = (unicode_width_str(last_line) as u16) % area_width.max(1);
+
         f.set_cursor_position((
-            area.x + 1 + col,
-            area.y + 1 + row.min(area.height.saturating_sub(2)),
+            area.x + 1 + col as u16,
+            area.y + 1 + row.min(area.height.saturating_sub(2) as usize) as u16,
         ));
     }
-
-    f.render_widget(para, area);
 }
 
 /// 渲染 footer 区域。
@@ -389,6 +408,7 @@ pub fn render_all(
     regions: LayoutRegions,
     state: &AppState,
     input: &str,
+    cursor_pos: usize,
     scroll_offset: usize,
     session_id: &str,
     footer_hints: &[(&'static str, String)],
@@ -403,7 +423,7 @@ pub fn render_all(
     render_header(f, regions.header, &model, &provider, session_id, git);
     render_chat(f, regions.chat, state, scroll_offset);
     render_status(f, regions.status, state);
-    render_editor(f, regions.editor, input, true, is_running);
+    render_editor(f, regions.editor, input, cursor_pos, true, is_running);
     render_footer(f, regions.footer, is_running, footer_hints);
 }
 
@@ -413,7 +433,3 @@ fn leak_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
 
-/// 计算 unicode 显示宽度。
-fn unicode_width_str(s: &str) -> usize {
-    s.chars().map(unicode_width).sum()
-}

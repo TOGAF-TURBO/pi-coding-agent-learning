@@ -269,6 +269,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 regions,
                 &state,
                 input.text(),
+                input.cursor(),
                 scroll_offset,
                 &sid,
                 &hints,
