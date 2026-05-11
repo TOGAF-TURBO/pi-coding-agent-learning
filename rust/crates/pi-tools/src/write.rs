@@ -12,6 +12,12 @@ use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
 /// Write 工具执行器。
 pub struct WriteTool;
 
+impl Default for WriteTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl WriteTool {
     pub fn new() -> Self {
         Self
@@ -57,6 +63,9 @@ impl ToolExecutor for WriteTool {
                 message: "missing 'content' parameter".to_string(),
             })?;
 
+        // 读取旧内容（如果存在）用于 diff
+        let old_content = fs::read_to_string(path).await.ok().unwrap_or_default();
+
         // 自动创建父目录
         if let Some(parent) = std::path::Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
@@ -75,9 +84,23 @@ impl ToolExecutor for WriteTool {
         let line_count = content.lines().count();
         let byte_count = content.len();
 
+        // 生成 diff（仅对已有文件）
+        let diff_display = if !old_content.is_empty() && old_content != content {
+            let diff = crate::diff::format_diff(&old_content, content, path);
+            if diff.is_empty() {
+                String::new()
+            } else {
+                format!("\n```diff\n{}\n```", diff.trim())
+            }
+        } else if old_content.is_empty() {
+            " (new file)".to_string()
+        } else {
+            String::new() // 内容未变
+        };
+
         Ok(ToolResult {
             tool_use_id: String::new(),
-            output: format!("Wrote {} bytes, {} lines to {}", byte_count, line_count, path),
+            output: format!("Wrote {} bytes, {} lines to {}{}", byte_count, line_count, path, diff_display),
             is_error: false,
             duration_ms: None,
         })

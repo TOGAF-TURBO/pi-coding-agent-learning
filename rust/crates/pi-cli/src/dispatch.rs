@@ -48,6 +48,7 @@ async fn async_main(cli: Cli) -> Result<()> {
         AppMode::Rpc => run_rpc(cli).await,
         AppMode::ListModels => run_list_models(cli).await,
         AppMode::ListSessions => run_list_sessions().await,
+        AppMode::Init => run_init().await,
     }
 }
 
@@ -58,6 +59,7 @@ enum AppMode {
     Rpc,
     ListModels,
     ListSessions,
+    Init,
 }
 
 fn resolve_mode(cli: &Cli) -> AppMode {
@@ -70,6 +72,9 @@ fn resolve_mode(cli: &Cli) -> AppMode {
     }
     if cli.list_sessions {
         return AppMode::ListSessions;
+    }
+    if cli.init {
+        return AppMode::Init;
     }
     // stdin 是 pipe 时自动进入 print 模式
     if atty::isnt(atty::Stream::Stdin) {
@@ -549,6 +554,85 @@ fn read_piped_stdin() -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+/// 生成模板配置文件到 ~/.piso/。
+async fn run_init() -> Result<()> {
+    use std::io::Write;
+
+    let config_dir = config::config_dir()
+        .ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+
+    // 创建目录
+    std::fs::create_dir_all(&config_dir)?;
+    std::fs::create_dir_all(config_dir.join("sessions"))?;
+    std::fs::create_dir_all(config_dir.join("skills"))?;
+
+    let models_path = config_dir.join("models.json");
+    let settings_path = config_dir.join("settings.json");
+    let keybindings_path = config_dir.join("keybindings.json");
+
+    // models.json — 仅当不存在时创建
+    if !models_path.exists() {
+        let template = r#"{
+  "providers": {
+    "openai": {
+      "name": "OpenAI",
+      "baseUrl": "https://api.openai.com/v1",
+      "apiKey": "sk-...",
+      "api": "openai-completions",
+      "models": [
+        { "id": "gpt-4o", "name": "GPT-4o" },
+        { "id": "gpt-4o-mini", "name": "GPT-4o Mini" }
+      ]
+    }
+  }
+}"#;
+        let mut f = std::fs::File::create(&models_path)?;
+        f.write_all(template.as_bytes())?;
+        println!("Created {}", models_path.display());
+        println!("  -> Edit this file to add your API key and providers");
+    } else {
+        println!("Exists: {}", models_path.display());
+    }
+
+    // settings.json
+    if !settings_path.exists() {
+        let template = r#"{
+  "model": "gpt-4o",
+  "provider": "openai",
+  "max_tokens": 16384
+}"#;
+        let mut f = std::fs::File::create(&settings_path)?;
+        f.write_all(template.as_bytes())?;
+        println!("Created {}", settings_path.display());
+    } else {
+        println!("Exists: {}", settings_path.display());
+    }
+
+    // keybindings.json
+    if !keybindings_path.exists() {
+        let template = r#"{
+  "submit": { "modifiers": "ctrl", "key": "o" },
+  "quit": { "modifiers": "ctrl", "key": "c" },
+  "cancel": { "modifiers": "none", "key": "escape" },
+  "open_session_picker": { "modifiers": "ctrl", "key": "s" },
+  "open_model_picker": { "modifiers": "ctrl", "key": "p" },
+  "tab_complete": { "modifiers": "none", "key": "tab" }
+}"#;
+        let mut f = std::fs::File::create(&keybindings_path)?;
+        f.write_all(template.as_bytes())?;
+        println!("Created {}", keybindings_path.display());
+    } else {
+        println!("Exists: {}", keybindings_path.display());
+    }
+
+    println!("\npiso config directory: {}", config_dir.display());
+    println!("Next steps:");
+    println!("  1. Edit ~/.piso/models.json and add your API key");
+    println!("  2. Run: piso --provider openai --model gpt-4o");
+
+    Ok(())
 }
 
 /// 导出会话为 HTML。

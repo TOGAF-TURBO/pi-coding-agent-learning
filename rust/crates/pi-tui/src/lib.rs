@@ -4,6 +4,7 @@ pub mod components;
 pub mod engine;
 pub mod event;
 pub mod eventbus;
+pub mod git;
 pub mod input;
 pub mod interactive;
 pub mod keybinding;

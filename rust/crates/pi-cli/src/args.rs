@@ -104,6 +104,10 @@ pub struct Cli {
     #[arg(long, short = 'v')]
     pub verbose: bool,
 
+    /// Generate template config files in ~/.piso/.
+    #[arg(long)]
+    pub init: bool,
+
     /// Print mode: non-interactive, output to stdout.
     #[arg(long, short = 'p')]
     pub print: bool,

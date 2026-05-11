@@ -91,6 +91,10 @@ pub struct AgentContext {
 pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let state = Arc::new(AppState::new(&cfg.model, &cfg.provider));
 
+    // Git 状态检测
+    let git_status = crate::git::detect(&cfg.cwd);
+    let git_display = crate::git::format_status(&git_status);
+
     let tools = make_tools(&cfg.cwd);
     let session_dir = cfg.session_dir.clone();
 
@@ -176,7 +180,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
         engine.terminal().draw(|f| {
             let size = f.area();
             let regions = layout::calculate(size, 5);
-            components::render_all(f, regions, &state, input.text(), scroll_offset, &sid, &hints);
+            components::render_all(f, regions, &state, input.text(), scroll_offset, &sid, &hints, &git_display);
 
             // 渲染 overlay（如果有）
             if let Some(ref mut sel) = overlay {

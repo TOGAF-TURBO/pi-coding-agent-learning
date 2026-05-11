@@ -8,4 +8,5 @@ pub mod loop_engine;
 pub mod session;
 pub mod skills;
 pub mod system_prompt;
+pub mod token_est;
 pub mod runtime;
