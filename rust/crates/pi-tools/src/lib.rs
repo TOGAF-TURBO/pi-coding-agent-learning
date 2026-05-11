@@ -8,6 +8,7 @@ pub mod edit;
 pub mod extension_tool;
 pub mod find;
 pub mod grep;
+pub mod lsp;
 pub mod read;
 pub mod registry;
 pub mod truncate;
