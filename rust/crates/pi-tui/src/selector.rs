@@ -6,9 +6,7 @@
 use ratatui::layout::Rect;
 use ratatui::style::{Color, Modifier, Style};
 use ratatui::text::{Line, Span};
-use ratatui::widgets::{Block, Borders, Clear, Paragraph, Wrap};
-
-use crate::input::InputEditor;
+use ratatui::widgets::{Block, Borders, Clear, Paragraph};
 
 /// 选择器条目。
 #[derive(Debug, Clone)]

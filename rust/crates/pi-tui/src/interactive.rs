@@ -36,7 +36,6 @@ use crate::app::{AgentState, AppState};
 use crate::components;
 use crate::engine::TuiEngine;
 use crate::event::Event;
-use crate::input::InputEditor;
 use crate::keybinding::{self, Action};
 use crate::layout;
 
@@ -61,25 +60,38 @@ pub struct InteractiveConfig {
     pub session: Option<JsonlSession>,
 }
 
+/// Agent 运行时上下文 — 避免传 9 个参数。
+pub struct AgentContext {
+    pub model: String,
+    pub api_key: String,
+    pub api_type: String,
+    pub base_url: Option<String>,
+    pub system_prompt: String,
+    pub cwd: PathBuf,
+}
+
 /// 运行交互模式。
 pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let state = Arc::new(AppState::new(&cfg.model, &cfg.provider));
 
     let tools = make_tools(&cfg.cwd);
     let session_dir = cfg.cwd.join(".piso").join("sessions");
-    let model = cfg.model.clone();
-    let api_key = cfg.api_key.clone();
-    let api_type = cfg.api_type.clone();
-    let base_url = cfg.base_url.clone();
-    let system_prompt = cfg.system_prompt.clone();
-    let cwd_str = cfg.cwd.to_string_lossy().to_string();
+
+    let ctx = Arc::new(AgentContext {
+        model: cfg.model.clone(),
+        api_key: cfg.api_key.clone(),
+        api_type: cfg.api_type.clone(),
+        base_url: cfg.base_url.clone(),
+        system_prompt: cfg.system_prompt.clone(),
+        cwd: cfg.cwd.clone(),
+    });
 
     // 使用预加载 session 或创建新的
     let mgr = SessionManager::new(&session_dir);
     mgr.ensure_dir().await?;
     let mut session = match cfg.session {
         Some(s) => s,
-        None => mgr.create(&cwd_str).await?,
+        None => mgr.create(&cfg.cwd.to_string_lossy()).await?,
     };
 
     // 把 session 历史消息加载到 AppState
@@ -94,6 +106,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     // Agent task — 持有 session，串行处理命令
     let agent_state = state.clone();
     let agent_abort = abort_flag.clone();
+    let agent_ctx = ctx.clone();
     let agent_handle = tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
@@ -104,11 +117,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                         &mut session,
                         &agent_state,
                         &tools,
-                        &model,
-                        &api_key,
-                        &api_type,
-                        &base_url,
-                        &system_prompt,
+                        &agent_ctx,
                     )
                     .await;
                 }
@@ -121,7 +130,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
 
     // TUI 事件循环
     let mut engine = TuiEngine::init()?;
-    let mut input = InputEditor::new();
+    let mut input = crate::input::InputEditor::new();
     let mut scroll_offset: usize = 0;
 
     // Overlay 状态
@@ -153,39 +162,36 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
 
         // Overlay 模式：拦截所有输入
         if let Some(ref mut sel) = overlay {
-            match event {
-                Event::Key(key) => {
-                    match key.code {
-                        KeyCode::Up => sel.up(),
-                        KeyCode::Down => sel.down(),
-                        KeyCode::Enter => {
-                            if let Some(id) = sel.selected_id().to_owned() {
-                                // 切换会话
-                                let mgr = SessionManager::new(&session_dir);
-                                match mgr.open(&id).await {
-                                    Ok(new_session) => {
-                                        // 停止 agent 并替换 session
-                                        // TODO: 需要协调 agent task
-                                        // 简化版：仅加载历史到 chat
-                                        state.entries.write().clear();
-                                        load_history(&new_session, &state);
-                                        // 更新显示的 session id
-                                        session_id_display = new_session.id().to_string();
-                                    }
-                                    Err(e) => {
-                                        state.set_state(AgentState::Error(format!("Session: {e}")));
-                                    }
+            if let Event::Key(key) = event {
+                match key.code {
+                    KeyCode::Up => sel.up(),
+                    KeyCode::Down => sel.down(),
+                    KeyCode::Enter => {
+                        if let Some(id) = sel.selected_id().to_owned() {
+                            // 切换会话
+                            let mgr = SessionManager::new(&session_dir);
+                            match mgr.open(id).await {
+                                Ok(new_session) => {
+                                    // 停止 agent 并替换 session
+                                    // TODO: 需要协调 agent task
+                                    // 简化版：仅加载历史到 chat
+                                    state.entries.write().clear();
+                                    load_history(&new_session, &state);
+                                    // 更新显示的 session id
+                                    session_id_display = new_session.id().to_string();
+                                }
+                                Err(e) => {
+                                    state.set_state(AgentState::Error(format!("Session: {e}")));
                                 }
                             }
-                            overlay = None;
                         }
-                        KeyCode::Esc => {
-                            overlay = None;
-                        }
-                        _ => {}
+                        overlay = None;
                     }
+                    KeyCode::Esc => {
+                        overlay = None;
+                    }
+                    _ => {}
                 }
-                _ => {}
             }
             continue;
         }
@@ -222,20 +228,17 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                     Action::OpenSessionPicker => {
                         // 打开会话选择器
                         let mgr = SessionManager::new(&session_dir);
-                        match mgr.list().await {
-                            Ok(sessions) => {
-                                let items: Vec<crate::selector::SelectItem> = sessions.into_iter().map(|s| {
-                                    crate::selector::SelectItem {
-                                        id: s.id.clone(),
-                                        label: s.id.clone(),
-                                        detail: format!("{} msgs, {}", s.message_count, s.cwd),
-                                    }
-                                }).collect();
-                                if !items.is_empty() {
-                                    overlay = Some(crate::selector::Selector::new("Sessions", items));
+                        if let Ok(sessions) = mgr.list().await {
+                            let items: Vec<crate::selector::SelectItem> = sessions.into_iter().map(|s| {
+                                crate::selector::SelectItem {
+                                    id: s.id.clone(),
+                                    label: s.id.clone(),
+                                    detail: format!("{} msgs, {}", s.message_count, s.cwd),
                                 }
+                            }).collect();
+                            if !items.is_empty() {
+                                overlay = Some(crate::selector::Selector::new("Sessions", items));
                             }
-                            Err(_) => {}
                         }
                     }
                     Action::None => {
@@ -274,17 +277,13 @@ async fn run_agent_turn(
     session: &mut JsonlSession,
     state: &Arc<AppState>,
     tools: &ToolRegistry,
-    model: &str,
-    api_key: &str,
-    api_type: &str,
-    base_url: &Option<String>,
-    system_prompt: &str,
+    ctx: &AgentContext,
 ) {
     state.push_user(text);
     state.set_state(AgentState::Thinking);
 
     // 创建 driver
-    let driver: Box<dyn LlmDriver> = match api_type {
+    let driver: Box<dyn LlmDriver> = match ctx.api_type.as_str() {
         "openai-completions" | "openai-responses" => {
             Box::new(pi_llm::openai::OpenAiDriver::new())
         }
@@ -344,13 +343,13 @@ async fn run_agent_turn(
         std::mem::replace(session, dummy_session),
         driver,
         tools.clone_for_agent(),
-        model,
+        &ctx.model,
     )
-    .with_api_key(api_key)
-    .with_system_prompt(system_prompt)
+    .with_api_key(&ctx.api_key)
+    .with_system_prompt(&ctx.system_prompt)
     .with_stream_sink(sink);
 
-    if let Some(url) = base_url {
+    if let Some(url) = &ctx.base_url {
         agent = agent.with_base_url(url);
     }
 
@@ -373,7 +372,7 @@ async fn run_agent_turn(
     // 检查是否需要上下文压缩
     if pi_agent::compaction::should_compact(session) {
         // 创建 driver 用于压缩
-        let compaction_driver: Box<dyn LlmDriver> = match api_type {
+        let compaction_driver: Box<dyn LlmDriver> = match ctx.api_type.as_str() {
             "openai-completions" | "openai-responses" => {
                 Box::new(pi_llm::openai::OpenAiDriver::new())
             }
@@ -385,9 +384,9 @@ async fn run_agent_turn(
         match pi_agent::compaction::compact(
             session,
             compaction_driver.as_ref(),
-            model,
-            api_key,
-            base_url,
+            &ctx.model,
+            &ctx.api_key,
+            &ctx.base_url,
         ).await {
             Ok(true) => tracing::info!("[compaction] completed"),
             Ok(false) => {}
@@ -417,38 +416,35 @@ fn abort_flag_clear(flag: &Arc<AtomicBool>) {
 fn load_history(session: &JsonlSession, state: &AppState) {
     use pi_types::session::SessionEntry;
     for entry in session.entries() {
-        match entry {
-            SessionEntry::Message(msg) => {
-                // 从 content 数组提取文本
-                let text = extract_text_from_content(&msg.content);
-                if text.is_empty() {
-                    continue;
-                }
-                match msg.role.as_str() {
-                    "user" => {
-                        // 检查是否是工具结果（content 包含 tool_result）
-                        if has_tool_results(&msg.content) {
-                            // 提取工具结果
-                            for block in msg.content.as_array().into_iter().flatten() {
-                                if block.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
-                                    let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
-                                    let output = block.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                                    let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
-                                    state.push_tool_result(name, output, is_error);
-                                }
-                            }
-                        } else {
-                            state.push_user(&text);
-                        }
-                    }
-                    "assistant" => {
-                        state.push_assistant_delta(&text);
-                        state.finish_assistant();
-                    }
-                    _ => {}
-                }
+        if let SessionEntry::Message(msg) = entry {
+            // 从 content 数组提取文本
+            let text = extract_text_from_content(&msg.content);
+            if text.is_empty() {
+                continue;
             }
-            _ => {}
+            match msg.role.as_str() {
+                "user" => {
+                    // 检查是否是工具结果（content 包含 tool_result）
+                    if has_tool_results(&msg.content) {
+                        // 提取工具结果
+                        for block in msg.content.as_array().into_iter().flatten() {
+                            if block.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
+                                let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
+                                let output = block.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                                let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                                state.push_tool_result(name, output, is_error);
+                            }
+                        }
+                    } else {
+                        state.push_user(&text);
+                    }
+                }
+                "assistant" => {
+                    state.push_assistant_delta(&text);
+                    state.finish_assistant();
+                }
+                _ => {}
+            }
         }
     }
 }

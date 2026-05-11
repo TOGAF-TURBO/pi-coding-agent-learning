@@ -75,11 +75,16 @@ fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
 
 /// Unicode 字符显示宽度（简化版：CJK = 2，其余 = 1）。
 fn unicode_width(ch: char) -> usize {
-    if ch >= '\u{4e00}' && ch <= '\u{9fff}' { 2 }       // CJK Unified
-    else if ch >= '\u{3000}' && ch <= '\u{303f}' { 2 }   // CJK Symbols
-    else if ch >= '\u{ff01}' && ch <= '\u{ff60}' { 2 }   // Fullwidth
-    else if ch == '\t' { 4 }
-    else { 1 }
+    if ('\u{4e00}'..='\u{9fff}').contains(&ch)
+        || ('\u{3000}'..='\u{303f}').contains(&ch)
+        || ('\u{ff01}'..='\u{ff60}').contains(&ch)
+    {
+        2
+    } else if ch == '\t' {
+        4
+    } else {
+        1
+    }
 }
 
 /// 渲染 chat 区域。

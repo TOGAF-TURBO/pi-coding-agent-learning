@@ -59,15 +59,16 @@ fn resolve_mode(cli: &Cli) -> AppMode {
     if !cli.messages.is_empty() || cli.print {
         return AppMode::Print;
     }
-    // stdin 是 pipe 时自动进入 print 模式
-    if atty::isnt(atty::Stream::Stdin) {
-        return AppMode::Print;
-    }
+    // 信息命令优先于 stdin 检测
     if cli.list_models.is_some() {
         return AppMode::ListModels;
     }
     if cli.list_sessions {
         return AppMode::ListSessions;
+    }
+    // stdin 是 pipe 时自动进入 print 模式
+    if atty::isnt(atty::Stream::Stdin) {
+        return AppMode::Print;
     }
     match cli.mode.as_deref() {
         Some("rpc") => AppMode::Rpc,
@@ -165,7 +166,7 @@ async fn run_print(cli: Cli) -> Result<()> {
         let agent_dir = config_dir.as_deref();
         let ctx_files = context::load_project_context_files(
             &cwd,
-            agent_dir.as_deref(),
+            agent_dir,
         );
         if !ctx_files.is_empty() {
             for ctx in &ctx_files {
@@ -490,7 +491,7 @@ async fn run_list_sessions() -> Result<()> {
     }
 
     println!("Sessions ({} total):", sessions.len());
-    println!("{:<25} {:<6} {}", "ID", "Msgs", "CWD");
+    println!("{:<25} {:<6} CWD", "ID", "Msgs");
     println!("{}", "-".repeat(60));
     for s in &sessions {
         let tag = if s.is_today { "*" } else { " " };
