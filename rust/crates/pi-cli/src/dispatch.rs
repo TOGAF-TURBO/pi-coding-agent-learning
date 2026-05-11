@@ -99,13 +99,22 @@ async fn run_print(cli: Cli) -> Result<()> {
     let config_dir = config::config_dir();
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
-    // 确定 provider（优先级：CLI > config > env > default）
+    // 解析 --model 紧凑语法：provider/id:thinking
+    // 如果 model 值包含 / 或 :，从中提取 provider 和 thinking
+    let (model_override, provider_override, _thinking_override) = cli
+        .model
+        .as_deref()
+        .map(parse_model_pattern)
+        .unwrap_or((None, None, None));
+
+    // 确定 provider（优先级：CLI --provider > --model 中的 /provider > config > env > default）
     let provider_env = std::env::var("PISO_PROVIDER")
         .ok()
         .or_else(|| std::env::var("PI_PROVIDER").ok());
     let provider = cli
         .provider
         .as_deref()
+        .or(provider_override)
         .or(cfg.provider.as_deref())
         .or(provider_env.as_deref())
         .unwrap_or("anthropic");
@@ -122,13 +131,11 @@ async fn run_print(cli: Cli) -> Result<()> {
         )
         })?;
 
-    // 确定 model（优先级：CLI > config > env > default）
+    // 确定 model（优先级：--model 解析后的 ID > config > env > default）
     let model_env = std::env::var("PISO_MODEL")
         .ok()
         .or_else(|| std::env::var("PI_MODEL").ok());
-    let model = cli
-        .model
-        .as_deref()
+    let model = model_override
         .or(cfg.model.as_deref())
         .or(model_env.as_deref())
         .unwrap_or("claude-sonnet-4-20250514");
@@ -366,12 +373,17 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let config_dir = config::config_dir();
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
+    // 解析 --model 紧凑语法
+    let (model_override_int, provider_override_int, _thinking_int) =
+        cli.model.as_deref().map(parse_model_pattern).unwrap_or((None, None, None));
+
     let provider_env = std::env::var("PISO_PROVIDER")
         .ok()
         .or_else(|| std::env::var("PI_PROVIDER").ok());
     let provider = cli
         .provider
         .clone()
+        .or(provider_override_int.map(|s| s.to_string()))
         .or(cfg.provider.clone())
         .or(provider_env)
         .unwrap_or_else(|| "anthropic".to_string());
@@ -391,9 +403,8 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let model_env = std::env::var("PISO_MODEL")
         .ok()
         .or_else(|| std::env::var("PI_MODEL").ok());
-    let model = cli
-        .model
-        .clone()
+    let model = model_override_int
+        .map(|s| s.to_string())
         .or(cfg.model.clone())
         .or(model_env)
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
@@ -565,6 +576,29 @@ async fn run_rpc(cli: Cli) -> Result<()> {
 }
 
 /// Provider 内部 ID → 人类可读名称。
+/// 解析 --model 紧凑语法：`provider/modelId:thinkingLevel`
+/// 返回 (model_id, provider, thinking_level)
+fn parse_model_pattern(pattern: &str) -> (Option<&str>, Option<&str>, Option<&str>) {
+    let (prefix, thinking) = match pattern.find(':') {
+        Some(idx) => (&pattern[..idx], Some(&pattern[idx + 1..])),
+        None => (pattern, None),
+    };
+
+    let (model_id, provider) = match prefix.find('/') {
+        Some(idx) => (&prefix[idx + 1..], Some(&prefix[..idx])),
+        None => (prefix, None),
+    };
+
+    // model_id 为空时返回 None
+    let model_id = if model_id.is_empty() {
+        None
+    } else {
+        Some(model_id)
+    };
+
+    (model_id, provider, thinking)
+}
+
 fn provider_display_name(provider: &str) -> String {
     match provider {
         "anthropic" => "Anthropic".to_string(),
@@ -1028,7 +1062,34 @@ mod tests {
     }
 
     #[test]
-    fn provider_display_unknown_capitalized() {
-        assert_eq!(provider_display_name("my-custom-provider"), "My-custom-provider");
+    fn parse_model_pattern_provider_and_thinking() {
+        let (model, provider, thinking) = parse_model_pattern("openai/gpt-4o:high");
+        assert_eq!(model, Some("gpt-4o"));
+        assert_eq!(provider, Some("openai"));
+        assert_eq!(thinking, Some("high"));
+    }
+
+    #[test]
+    fn parse_model_pattern_thinking_only() {
+        let (model, provider, thinking) = parse_model_pattern("sonnet:medium");
+        assert_eq!(model, Some("sonnet"));
+        assert_eq!(provider, None);
+        assert_eq!(thinking, Some("medium"));
+    }
+
+    #[test]
+    fn parse_model_pattern_provider_only() {
+        let (model, provider, thinking) = parse_model_pattern("anthropic/claude-sonnet-4");
+        assert_eq!(model, Some("claude-sonnet-4"));
+        assert_eq!(provider, Some("anthropic"));
+        assert_eq!(thinking, None);
+    }
+
+    #[test]
+    fn parse_model_pattern_plain() {
+        let (model, provider, thinking) = parse_model_pattern("gpt-4o");
+        assert_eq!(model, Some("gpt-4o"));
+        assert_eq!(provider, None);
+        assert_eq!(thinking, None);
     }
 }

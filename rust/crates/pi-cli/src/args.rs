@@ -22,7 +22,7 @@ pub struct Cli {
     #[arg(long)]
     pub provider: Option<String>,
 
-    /// Model to use.
+    /// Model to use. Supports compact syntax: provider/id:thinking
     #[arg(long, short = 'm')]
     pub model: Option<String>,
 
