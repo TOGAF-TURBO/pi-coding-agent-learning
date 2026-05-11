@@ -54,6 +54,10 @@ pub enum SlashCommand {
     Sessions,
     /// 打开 diff 查看器。
     Diff,
+    /// GitHub Copilot OAuth 登录。
+    Login,
+    /// 清除缓存的 OAuth token。
+    Logout,
     /// 退出。
     Quit,
     /// 未知命令。
@@ -94,6 +98,8 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "clone" => SlashCommand::Clone,
         "sessions" | "s" => SlashCommand::Sessions,
         "diff" | "d" => SlashCommand::Diff,
+        "login" => SlashCommand::Login,
+        "logout" => SlashCommand::Logout,
         "quit" | "q" | "exit" => SlashCommand::Quit,
         _ => SlashCommand::Unknown(cmd.to_string()),
     })
@@ -123,6 +129,8 @@ pub fn help_text() -> String {
         "  /clone              Duplicate current session",
         "  /sessions, /s       Open session picker",
         "  /diff, /d           Open diff viewer",
+        "  /login              GitHub Copilot OAuth login",
+        "  /logout             Clear cached OAuth token",
         "  /quit, /q           Quit piso",
     ]
     .join("\n")

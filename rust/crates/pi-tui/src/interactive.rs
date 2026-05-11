@@ -1178,6 +1178,12 @@ async fn handle_slash_command(
                 });
             }
         }
+        SlashCommand::Login => {
+            state.push_system("Use 'piso login' from terminal for GitHub Copilot OAuth.");
+        }
+        SlashCommand::Logout => {
+            state.push_system("Use 'piso logout' from terminal to clear OAuth token.");
+        }
         SlashCommand::Unknown(cmd) => {
             state.push_system(&format!(
                 "Unknown command: /{}. Type /help for available commands.",

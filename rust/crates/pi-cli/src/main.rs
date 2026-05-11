@@ -49,6 +49,44 @@ fn main() -> Result<()> {
             "list" => {
                 return pi_cli::subcommands::list();
             }
+            "login" => {
+                let rt = tokio::runtime::Runtime::new()?;
+                return rt.block_on(async {
+                    println!("Starting GitHub Copilot OAuth device flow...");
+                    match pi_cli::oauth::start_device_flow().await {
+                        Ok((code, url)) => {
+                            println!("\n  Visit: {}", url);
+                            println!("  Enter code: {}\n", code);
+                            println!("Waiting for authorization...");
+                        }
+                        Err(e) => {
+                            eprintln!("Failed to start device flow: {e}");
+                            return Err(e);
+                        }
+                    }
+                    match pi_cli::oauth::poll_for_token(300).await {
+                        Ok(token) => {
+                            let config_dir = pi_cli::config::config_dir()
+                                .unwrap_or_else(|| ".".into());
+                            let auth_path = std::path::PathBuf::from(config_dir).join("auth.json");
+                            pi_cli::oauth::save_token(&token, &auth_path)?;
+                            println!("Login successful! Token saved.");
+                        }
+                        Err(e) => {
+                            eprintln!("Login failed: {e}");
+                        }
+                    }
+                    Ok(())
+                });
+            }
+            "logout" => {
+                let config_dir = pi_cli::config::config_dir()
+                    .unwrap_or_else(|| ".".into());
+                let auth_path = std::path::PathBuf::from(config_dir).join("auth.json");
+                pi_cli::oauth::clear_token(&auth_path)?;
+                println!("Logged out. Cached token cleared.");
+                return Ok(());
+            }
             _ => {}
         }
     }

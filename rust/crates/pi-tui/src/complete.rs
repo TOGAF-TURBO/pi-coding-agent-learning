@@ -27,6 +27,8 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/usage", "Show token usage and cost"),
     ("/sessions", "List recent sessions"),
     ("/diff", "Open diff viewer"),
+    ("/login", "GitHub Copilot login"),
+    ("/logout", "Clear OAuth token"),
     ("/find", "Search across sessions"),
     ("/grep", "Search current session"),
     ("/new", "Start new session"),

@@ -22,6 +22,7 @@ pub mod args;
 pub mod auth;
 pub mod config;
 pub mod dispatch;
+pub mod oauth;
 pub mod rpc;
 pub mod subcommands;
 pub mod version;
