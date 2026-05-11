@@ -457,6 +457,11 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     }
                     Action::ToggleFocus => {}
                     Action::NewSession => {}
+                    Action::NewLine => {
+                        if !is_running {
+                            input.insert('\n');
+                        }
+                    }
                     Action::Retry => {
                         if !is_running {
                             let msg = last_user_msg.read().unwrap().clone();
@@ -475,7 +480,6 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                                 KeyCode::Right => input.move_right(),
                                 KeyCode::Home => input.move_home(),
                                 KeyCode::End => input.move_end(),
-                                KeyCode::Enter => input.insert('\n'),
                                 KeyCode::Up => input.history_up(),
                                 KeyCode::Down => input.history_down(),
                                 _ => {}

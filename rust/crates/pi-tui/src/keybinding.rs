@@ -13,6 +13,8 @@ use serde::{Deserialize, Serialize};
 #[serde(rename_all = "snake_case")]
 pub enum Action {
     Submit,
+    /// 插入换行。
+    NewLine,
     Quit,
     Cancel,
     ToggleFocus,
@@ -42,6 +44,7 @@ pub struct KeyBinding {
 #[serde(default)]
 pub struct KeyBindings {
     pub submit: Option<KeyBinding>,
+    pub newline: Option<KeyBinding>,
     pub quit: Option<KeyBinding>,
     pub cancel: Option<KeyBinding>,
     pub toggle_focus: Option<KeyBinding>,
@@ -60,8 +63,12 @@ impl KeyBindings {
     pub fn defaults() -> Self {
         Self {
             submit: Some(KeyBinding {
-                modifiers: "ctrl".into(),
-                key: "o".into(),
+                modifiers: "none".into(),
+                key: "enter".into(),
+            }),
+            newline: Some(KeyBinding {
+                modifiers: "shift".into(),
+                key: "enter".into(),
             }),
             quit: Some(KeyBinding {
                 modifiers: "ctrl".into(),
@@ -114,6 +121,11 @@ impl KeyBindings {
                             bindings.submit = Some(kb);
                         }
                     }
+                    if let Some(v) = obj.get("newline") {
+                        if let Ok(kb) = serde_json::from_value::<KeyBinding>(v.clone()) {
+                            bindings.newline = Some(kb);
+                        }
+                    }
                     if let Some(v) = obj.get("quit") {
                         if let Ok(kb) = serde_json::from_value::<KeyBinding>(v.clone()) {
                             bindings.quit = Some(kb);
@@ -160,6 +172,7 @@ impl KeyBindings {
         let mut table = Vec::new();
         let fields: &[(&Option<KeyBinding>, Action)] = &[
             (&self.submit, Action::Submit),
+            (&self.newline, Action::NewLine),
             (&self.quit, Action::Quit),
             (&self.cancel, Action::Cancel),
             (&self.toggle_focus, Action::ToggleFocus),
@@ -189,10 +202,6 @@ impl KeyBindings {
                 return action.clone();
             }
         }
-        // Ctrl+Enter 也作为 Submit 的备选（硬编码，不可覆盖）
-        if key.modifiers.contains(KeyModifiers::CONTROL) && key.code == KeyCode::Enter {
-            return Action::Submit;
-        }
         Action::None
     }
 
@@ -220,7 +229,7 @@ impl KeyBindings {
                 .submit
                 .as_ref()
                 .map(|kb| kb.display())
-                .unwrap_or_else(|| "Ctrl+O".to_string());
+                .unwrap_or_else(|| "Enter".to_string());
             let quit_key = self
                 .quit
                 .as_ref()
@@ -343,12 +352,20 @@ mod tests {
     #[test]
     fn default_bindings_match() {
         let kb = KeyBindings::defaults();
-        let key = KeyEvent::new(KeyCode::Char('o'), KeyModifiers::CONTROL);
+
+        // Enter (no modifier) = Submit
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::NONE);
         assert_eq!(kb.match_key(&key), Action::Submit);
 
+        // Shift+Enter = NewLine
+        let key = KeyEvent::new(KeyCode::Enter, KeyModifiers::SHIFT);
+        assert_eq!(kb.match_key(&key), Action::NewLine);
+
+        // Esc = Cancel
         let key = KeyEvent::new(KeyCode::Esc, KeyModifiers::NONE);
         assert_eq!(kb.match_key(&key), Action::Cancel);
 
+        // Ctrl+C = Quit
         let key = KeyEvent::new(KeyCode::Char('c'), KeyModifiers::CONTROL);
         assert_eq!(kb.match_key(&key), Action::Quit);
     }
@@ -395,7 +412,7 @@ mod tests {
         let idle_hints = kb.footer_hints(false);
         assert!(idle_hints
             .iter()
-            .any(|(t, s)| *t == "key" && s.contains("Ctrl+O")));
+            .any(|(t, s)| *t == "key" && s.contains("Enter")));
         let running_hints = kb.footer_hints(true);
         assert!(running_hints
             .iter()
