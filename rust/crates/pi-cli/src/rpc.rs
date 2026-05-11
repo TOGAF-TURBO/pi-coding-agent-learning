@@ -296,8 +296,11 @@ pub async fn run_rpc(
     let mut agent_running = false;
     let mut current_model = model.clone();
     let mut follow_up_queue: Vec<String> = Vec::new();
+    #[allow(unused_variables)]
     let mut thinking_level: Option<String> = None;
+    #[allow(unused_variables)]
     let mut auto_compaction: bool = true;
+    #[allow(unused_variables)]
     let mut auto_retry: bool = false;
 
     // 可用模型列表

@@ -16,6 +16,7 @@ use crate::gemini::GeminiDriver;
 /// 复用 Gemini driver 的 SSE 解析，但使用 Vertex AI 的 URL 格式和认证。
 /// URL: `https://{location}-aiplatform.googleapis.com/v1/projects/{project}/locations/{location}/publishers/google/models/{model}:streamGenerateContent`
 pub struct VertexDriver {
+    #[allow(dead_code)]
     inner: GeminiDriver,
     client: Client,
 }
@@ -40,6 +41,7 @@ impl VertexDriver {
             .unwrap_or_else(|_| "us-central1".to_string())
     }
 
+    #[allow(dead_code)]
     fn credentials_path() -> Option<PathBuf> {
         std::env::var("GOOGLE_APPLICATION_CREDENTIALS")
             .ok()
@@ -54,6 +56,7 @@ impl VertexDriver {
     }
 
     /// 读取 service account token（简化版 — 生产环境应使用 gcloud auth）。
+    #[allow(dead_code)]
     async fn get_access_token(&self) -> Option<String> {
         // 尝试从 gcloud CLI 获取 token
         let output = tokio::process::Command::new("gcloud")

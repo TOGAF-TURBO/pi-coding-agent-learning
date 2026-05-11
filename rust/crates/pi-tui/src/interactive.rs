@@ -231,7 +231,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 Command::CloneSession => {
                     let entries = session.entries().to_vec();
                     let count = entries.len();
-                    let mgr = SessionManager::new(
+                    let _mgr = SessionManager::new(
                         &std::path::PathBuf::from(&agent_ctx.cwd)
                             .parent()
                             .unwrap_or(std::path::Path::new("."))
