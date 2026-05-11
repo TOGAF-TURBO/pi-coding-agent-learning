@@ -43,4 +43,5 @@ collect.sh
 
 # Rust / piso
 rust/target/
+rust/.piso/
 **/*.rs.bk
