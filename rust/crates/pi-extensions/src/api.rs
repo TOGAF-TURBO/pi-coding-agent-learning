@@ -147,6 +147,12 @@ pub trait ExtensionApi {
 
     /// 设置标签（用于分类）。
     fn set_label(&mut self, key: &str, value: &str);
+
+    /// 注册 CLI flag。
+    /// name: flag 名称
+    /// flag_type: 类型 ("boolean", "string", "number")
+    /// description: 说明
+    fn register_flag(&mut self, name: &str, flag_type: &str, description: &str);
 }
 
 /// 扩展持久化存储。
@@ -203,6 +209,7 @@ pub struct HookRegistry {
     pub pending_messages: Vec<(String, String)>, // (role, content)
     pub session_name: Option<String>,
     pub labels: Vec<(String, String)>,
+    pub flags: Vec<FlagEntry>,
 }
 
 /// 注册的工具条目。
@@ -241,6 +248,13 @@ pub struct ShortcutEntry {
     pub key: String,
     pub description: String,
     pub handler: Box<dyn Fn() + Send + Sync>,
+}
+
+/// 注册的 CLI flag 条目。
+pub struct FlagEntry {
+    pub name: String,
+    pub flag_type: String,
+    pub description: String,
 }
 
 /// 基础 ExtensionApi 实现。
@@ -427,6 +441,14 @@ impl ExtensionApi for BasicExtensionApi {
     fn set_label(&mut self, key: &str, value: &str) {
         self.hooks.labels.push((key.to_string(), value.to_string()));
     }
+
+    fn register_flag(&mut self, name: &str, flag_type: &str, description: &str) {
+        self.hooks.flags.push(FlagEntry {
+            name: name.to_string(),
+            flag_type: flag_type.to_string(),
+            description: description.to_string(),
+        });
+    }
 }
 
 #[cfg(test)]
@@ -494,5 +516,20 @@ mod tests {
         assert_eq!(store.get("key"), Some("value"));
         store.remove("key");
         assert!(store.get("key").is_none());
+    }
+
+    #[test]
+    fn register_flag_and_shortcut() {
+        let mut api = BasicExtensionApi::new("test-flags");
+
+        api.register_flag("plan", "boolean", "Enable plan mode");
+        api.register_shortcut("ctrl+alt+p", "Run plan mode", Box::new(|| {}));
+
+        let hooks = api.into_hooks();
+        assert_eq!(hooks.flags.len(), 1);
+        assert_eq!(hooks.flags[0].name, "plan");
+        assert_eq!(hooks.flags[0].flag_type, "boolean");
+        assert_eq!(hooks.shortcuts.len(), 1);
+        assert_eq!(hooks.shortcuts[0].key, "ctrl+alt+p");
     }
 }

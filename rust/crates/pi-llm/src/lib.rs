@@ -12,6 +12,7 @@ pub mod gemini;
 pub mod azure;
 pub mod bedrock;
 pub mod openai_responses;
+pub mod vertex;
 
 pub use driver::{CompletionRequest, LlmDriver, StreamEvent};
 pub use registry::ProviderRegistry;

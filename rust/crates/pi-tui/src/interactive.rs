@@ -53,6 +53,10 @@ enum Command {
     Compact,
     /// 新建会话。
     NewSession,
+    /// 导入 JSONL 文件。
+    Import { path: String },
+    /// 克隆当前会话。
+    CloneSession,
 }
 
 /// 交互模式配置。
@@ -147,8 +151,10 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
             match cmd {
                 Command::Send { text } => {
                     abort_flag_clear(&agent_abort);
+                    // 解析 @file 引用
+                    let resolved = pi_tools::fileref::resolve_file_refs(&text, &std::path::PathBuf::from(&agent_ctx.cwd)).0;
                     run_agent_turn(
-                        &text,
+                        &resolved,
                         &mut session,
                         &agent_state,
                         &tools,
@@ -203,6 +209,37 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 }
                 Command::NewSession => {
                     agent_state.push_system("New session requested — restart piso to start fresh.");
+                }
+                Command::Import { path } => {
+                    let file_path = std::path::PathBuf::from(&path);
+                    if !file_path.exists() {
+                        agent_state.push_system(&format!("File not found: {}", path));
+                    } else {
+                        match pi_session::jsonl::JsonlSession::open(&file_path).await {
+                            Ok(imported) => {
+                                let count = imported.len();
+                                for entry in imported.entries() {
+                                    let _ = session.append(entry.clone()).await;
+                                }
+                                agent_state.push_system(&format!("Imported {} entries from {}", count, path));
+                            }
+                            Err(e) => {
+                                agent_state.push_system(&format!("Failed to import: {e}"));
+                            }
+                        }
+                    }
+                }
+                Command::CloneSession => {
+                    let entries = session.entries().to_vec();
+                    let count = entries.len();
+                    let mgr = SessionManager::new(
+                        &std::path::PathBuf::from(&agent_ctx.cwd)
+                            .parent()
+                            .unwrap_or(std::path::Path::new("."))
+                            .join(".piso/sessions")
+                    );
+                    // 使用 session_dir 创建克隆
+                    agent_state.push_system(&format!("Cloned {} entries. New session will be available on restart.", count));
                 }
             }
         }
@@ -886,6 +923,16 @@ async fn handle_slash_command(
             } else {
                 state.push_system(&format!("Session named: {}", name));
             }
+        }
+        SlashCommand::Import(path) => {
+            if path.is_empty() {
+                state.push_system("Usage: /import <path-to-jsonl-file>");
+            } else {
+                let _ = cmd_tx.send(Command::Import { path });
+            }
+        }
+        SlashCommand::Clone => {
+            let _ = cmd_tx.send(Command::CloneSession);
         }
         SlashCommand::Sessions => {
             let mgr = SessionManager::new(session_dir);

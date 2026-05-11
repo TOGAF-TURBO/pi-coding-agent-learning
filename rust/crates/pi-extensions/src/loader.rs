@@ -64,6 +64,7 @@ impl ExtensionLoader {
                 merged.session_name = hooks.session_name;
             }
             merged.labels.extend(hooks.labels);
+            merged.flags.extend(hooks.flags);
             merged.tools.extend(hooks.tools);
             merged.commands.extend(hooks.commands);
             merged.message_renderers.extend(hooks.message_renderers);

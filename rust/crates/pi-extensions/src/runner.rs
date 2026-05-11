@@ -167,6 +167,11 @@ impl ExtensionRunner {
         &self.hooks.labels
     }
 
+    /// 获取注册的 CLI flags。
+    pub fn flags(&self) -> &[crate::api::FlagEntry] {
+        &self.hooks.flags
+    }
+
     /// 查找已注册的自定义工具。
     pub fn find_tool(&self, name: &str) -> Option<&crate::api::ToolEntry> {
         self.hooks.tools.iter().find(|t| t.name == name)

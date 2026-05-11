@@ -35,6 +35,10 @@ impl ProviderRegistry {
         drivers.insert("google".to_string(), google);
         drivers.insert("gemini".to_string(), Arc::new(GeminiDriver::new()));
 
+        // Google Vertex
+        let vertex: Arc<dyn LlmDriver> = Arc::new(crate::vertex::VertexDriver::new());
+        drivers.insert("vertex".to_string(), vertex);
+
         Self {
             drivers: RwLock::new(drivers),
         }
@@ -73,6 +77,7 @@ mod tests {
         assert!(names.contains(&"anthropic".to_string()));
         assert!(names.contains(&"openai".to_string()));
         assert!(names.contains(&"google".to_string()));
+        assert!(names.contains(&"vertex".to_string()));
         assert!(names.contains(&"glm".to_string()));
         assert!(names.contains(&"deepseek".to_string()));
     }

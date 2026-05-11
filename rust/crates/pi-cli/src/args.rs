@@ -90,6 +90,18 @@ pub struct Cli {
     #[arg(long)]
     pub no_context_files: bool,
 
+    /// Load a specific skill by name.
+    #[arg(long)]
+    pub skill: Option<String>,
+
+    /// Load a specific theme by name.
+    #[arg(long)]
+    pub theme: Option<String>,
+
+    /// Use a specific prompt template.
+    #[arg(long)]
+    pub prompt_template: Option<String>,
+
     /// List available models.
     #[arg(long)]
     pub list_models: Option<Option<String>>,
@@ -228,5 +240,29 @@ mod tests {
         let cli = Cli::try_parse_from(["piso", "completions", "bash"]);
         assert!(cli.is_ok());
         // subcommands are not directly in Cli, they need a top-level parser
+    }
+
+    #[test]
+    fn parse_skill_flag() {
+        let cli = Cli::try_parse_from(["piso", "--skill", "code-review"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.skill.as_deref(), Some("code-review"));
+    }
+
+    #[test]
+    fn parse_theme_flag() {
+        let cli = Cli::try_parse_from(["piso", "--theme", "dracula"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.theme.as_deref(), Some("dracula"));
+    }
+
+    #[test]
+    fn parse_prompt_template_flag() {
+        let cli = Cli::try_parse_from(["piso", "--prompt-template", "review"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.prompt_template.as_deref(), Some("review"));
     }
 }

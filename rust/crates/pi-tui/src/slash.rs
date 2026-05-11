@@ -46,6 +46,10 @@ pub enum SlashCommand {
     SessionInfo,
     /// 设置会话名称。
     Name(String),
+    /// 导入 JSONL 会话文件。
+    Import(String),
+    /// 克隆当前会话。
+    Clone,
     /// 打开会话选择器。
     Sessions,
     /// 退出。
@@ -84,6 +88,8 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "fork" => SlashCommand::Fork(arg.unwrap_or_default()),
         "session" | "info" => SlashCommand::SessionInfo,
         "name" => SlashCommand::Name(arg.unwrap_or_default()),
+        "import" | "i" => SlashCommand::Import(arg.unwrap_or_default()),
+        "clone" => SlashCommand::Clone,
         "sessions" | "s" => SlashCommand::Sessions,
         "quit" | "q" | "exit" => SlashCommand::Quit,
         _ => SlashCommand::Unknown(cmd.to_string()),
@@ -110,6 +116,8 @@ pub fn help_text() -> String {
         "  /fork [at]          Fork session at message",
         "  /session, /info     Show session info",
         "  /name <name>        Set session display name",
+        "  /import, /i <path>  Import JSONL session file",
+        "  /clone              Duplicate current session",
         "  /sessions, /s       Open session picker",
         "  /quit, /q           Quit piso",
     ].join("\n")
@@ -169,5 +177,31 @@ mod tests {
         let text = help_text();
         assert!(text.contains("/help"));
         assert!(text.contains("/quit"));
+        assert!(text.contains("/import"));
+        assert!(text.contains("/clone"));
+    }
+
+    #[test]
+    fn parse_import() {
+        match parse("/import /tmp/session.jsonl") {
+            Some(SlashCommand::Import(path)) => assert_eq!(path, "/tmp/session.jsonl"),
+            _ => panic!("Expected Import"),
+        }
+    }
+
+    #[test]
+    fn parse_import_short() {
+        match parse("/i /path/to/file") {
+            Some(SlashCommand::Import(path)) => assert_eq!(path, "/path/to/file"),
+            _ => panic!("Expected Import"),
+        }
+    }
+
+    #[test]
+    fn parse_clone() {
+        match parse("/clone") {
+            Some(SlashCommand::Clone) => {},
+            _ => panic!("Expected Clone"),
+        }
     }
 }

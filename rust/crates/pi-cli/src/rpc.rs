@@ -124,6 +124,27 @@ pub enum RpcCommand {
         #[serde(default)]
         id: Option<String>,
     },
+    /// 设置 thinking level。
+    #[serde(rename = "set_thinking_level")]
+    SetThinkingLevel {
+        #[serde(default)]
+        id: Option<String>,
+        level: String,
+    },
+    /// 设置自动压缩。
+    #[serde(rename = "set_auto_compaction")]
+    SetAutoCompaction {
+        #[serde(default)]
+        id: Option<String>,
+        enabled: bool,
+    },
+    /// 设置自动重试。
+    #[serde(rename = "set_auto_retry")]
+    SetAutoRetry {
+        #[serde(default)]
+        id: Option<String>,
+        enabled: bool,
+    },
 }
 
 // ============================================================================
@@ -213,6 +234,24 @@ pub enum RpcEvent {
     Steered {
         id: Option<String>,
     },
+    /// Thinking level 已设置。
+    #[serde(rename = "thinking_level_set")]
+    ThinkingLevelSet {
+        id: Option<String>,
+        level: String,
+    },
+    /// 自动压缩已设置。
+    #[serde(rename = "auto_compaction_set")]
+    AutoCompactionSet {
+        id: Option<String>,
+        enabled: bool,
+    },
+    /// 自动重试已设置。
+    #[serde(rename = "auto_retry_set")]
+    AutoRetrySet {
+        id: Option<String>,
+        enabled: bool,
+    },
 }
 
 /// 模型信息。
@@ -272,6 +311,9 @@ pub async fn run_rpc(
     let mut agent_running = false;
     let mut current_model = model.clone();
     let mut follow_up_queue: Vec<String> = Vec::new();
+    let mut thinking_level: Option<String> = None;
+    let mut auto_compaction: bool = true;
+    let mut auto_retry: bool = false;
 
     // 可用模型列表
     let available_models = crate::dispatch::collect_available_models(
@@ -590,8 +632,24 @@ pub async fn run_rpc(
                             "/find".to_string(), "/grep".to_string(), "/new".to_string(),
                             "/reload".to_string(), "/copy".to_string(), "/fork".to_string(),
                             "/session".to_string(), "/name".to_string(), "/export".to_string(),
+                            "/import".to_string(), "/clone".to_string(),
                         ];
                         emit(&mut stdout_writer, &RpcEvent::Commands { id, commands }).await?;
+                    }
+
+                    RpcCommand::SetThinkingLevel { id, level } => {
+                        thinking_level = Some(level.clone());
+                        emit(&mut stdout_writer, &RpcEvent::ThinkingLevelSet { id, level }).await?;
+                    }
+
+                    RpcCommand::SetAutoCompaction { id, enabled } => {
+                        auto_compaction = enabled;
+                        emit(&mut stdout_writer, &RpcEvent::AutoCompactionSet { id, enabled }).await?;
+                    }
+
+                    RpcCommand::SetAutoRetry { id, enabled } => {
+                        auto_retry = enabled;
+                        emit(&mut stdout_writer, &RpcEvent::AutoRetrySet { id, enabled }).await?;
                     }
                 }
             }
@@ -628,6 +686,9 @@ fn make_driver(api_type: &str) -> Box<dyn LlmDriver> {
         }
         "amazon-bedrock" | "bedrock" => {
             Box::new(pi_llm::bedrock::BedrockDriver::new())
+        }
+        "google-vertex" | "vertex" => {
+            Box::new(pi_llm::vertex::VertexDriver::new())
         }
         "google-gemini" | "gemini" => {
             Box::new(pi_llm::gemini::GeminiDriver::new())
@@ -761,5 +822,43 @@ mod tests {
         let json = r#"{"type":"unknown"}"#;
         let result = serde_json::from_str::<RpcCommand>(json);
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn deserialize_set_thinking_level() {
+        let json = r#"{"type":"set_thinking_level","level":"high"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            RpcCommand::SetThinkingLevel { level, .. } => assert_eq!(level, "high"),
+            _ => panic!("Expected SetThinkingLevel"),
+        }
+    }
+
+    #[test]
+    fn deserialize_set_auto_compaction() {
+        let json = r#"{"type":"set_auto_compaction","enabled":true}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(cmd, RpcCommand::SetAutoCompaction { enabled: true, .. }));
+    }
+
+    #[test]
+    fn deserialize_set_auto_retry() {
+        let json = r#"{"type":"set_auto_retry","enabled":false}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(cmd, RpcCommand::SetAutoRetry { enabled: false, .. }));
+    }
+
+    #[test]
+    fn serialize_thinking_level_set() {
+        let event = RpcEvent::ThinkingLevelSet { id: None, level: "medium".to_string() };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("thinking_level_set"));
+    }
+
+    #[test]
+    fn serialize_auto_compaction_set() {
+        let event = RpcEvent::AutoCompactionSet { id: None, enabled: true };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("auto_compaction_set"));
     }
 }
