@@ -105,6 +105,26 @@ impl AppState {
         }
     }
 
+    /// 追加或更新思考文本。
+    pub fn push_thinking_delta(&self, text: &str) {
+        let mut entries = self.entries.write();
+        // 如果最后一条是 streaming 的 assistant 且有 thinking 内容，追加
+        // 否则创建新的 thinking 块（显示在 assistant 消息内）
+        if let Some(last) = entries.last_mut() {
+            if matches!(last.role, ChatRole::Assistant) && last.streaming {
+                // 在 assistant 内容里追加 thinking 标记
+                last.content.push_str(text);
+                return;
+            }
+        }
+        // 新 assistant 条目（thinking 内容）
+        entries.push(ChatEntry {
+            role: ChatRole::Assistant,
+            content: text.to_string(),
+            streaming: true,
+        });
+    }
+
     /// 追加工具结果。
     pub fn push_tool_result(&self, name: &str, output: &str, is_error: bool) {
         self.entries.write().push(ChatEntry {

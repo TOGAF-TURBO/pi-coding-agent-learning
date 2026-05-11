@@ -176,6 +176,8 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                                 KeyCode::Home => input.move_home(),
                                 KeyCode::End => input.move_end(),
                                 KeyCode::Enter => input.insert('\n'),
+                                KeyCode::Up => input.history_up(),
+                                KeyCode::Down => input.history_down(),
                                 _ => {}
                             }
                         }
@@ -226,6 +228,9 @@ async fn run_agent_turn(
         match event {
             StreamEvent::TextDelta { text } => {
                 sink_state.push_assistant_delta(&text);
+            }
+            StreamEvent::ThinkingDelta { thinking } => {
+                sink_state.push_thinking_delta(&thinking);
             }
             StreamEvent::ToolCallStart { name, .. } => {
                 sink_state.set_state(AgentState::ToolRunning { name });

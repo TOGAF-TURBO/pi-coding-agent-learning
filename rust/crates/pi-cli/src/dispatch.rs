@@ -1,6 +1,7 @@
 //! 模式分发 — 根据 CLI 参数启动对应运行模式。
 
 use std::env;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow, bail};
 
@@ -8,7 +9,7 @@ use crate::args::Cli;
 use crate::auth::AuthStorage;
 use crate::config;
 
-use pi_agent::loop_engine::AgentLoop;
+use pi_agent::loop_engine::{AgentLoop, StreamSink};
 use pi_agent::context;
 use pi_agent::skills;
 use pi_agent::system_prompt::SystemPromptBuilder;
@@ -56,6 +57,10 @@ enum AppMode {
 
 fn resolve_mode(cli: &Cli) -> AppMode {
     if !cli.messages.is_empty() || cli.print {
+        return AppMode::Print;
+    }
+    // stdin 是 pipe 时自动进入 print 模式
+    if atty::isnt(atty::Stream::Stdin) {
         return AppMode::Print;
     }
     if cli.list_models.is_some() {
@@ -207,12 +212,24 @@ async fn run_print(cli: Cli) -> Result<()> {
         agent = agent.with_base_url(url);
     }
 
+    // print 模式：流式输出到 stdout（不输出到 stderr）
+    let print_sink: Arc<StreamSink> = Arc::new(Box::new(|event| {
+        use pi_llm::driver::StreamEvent;
+        use std::io::Write;
+        if let StreamEvent::TextDelta { text } = event {
+            print!("{}", text);
+            let _ = std::io::stdout().flush();
+        }
+    }));
+    agent = agent.with_stream_sink(print_sink);
+
     // 运行 agent
     let output = agent.run(&user_message).await?;
 
-    // 输出结果
-    print!("{}", output.text);
+    // 最终换行
+    println!();
 
+    let _ = output;
     Ok(())
 }
 

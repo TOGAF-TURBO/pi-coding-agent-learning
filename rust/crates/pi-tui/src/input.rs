@@ -1,14 +1,23 @@
-//! 输入处理 — 多行文本编辑。
+//! 输入处理 — 多行文本编辑 + 历史记录。
 //!
 //! 支持基本编辑操作：输入字符、退格、删除、光标移动、回车换行。
+//! 支持上下箭头浏览已发送的消息历史。
+
+/// 最大历史记录条数。
+const MAX_HISTORY: usize = 100;
 
 /// 输入编辑器状态。
-#[derive(Debug, Clone)]
 pub struct InputEditor {
     /// 输入文本。
     text: String,
     /// 光标位置（字节偏移）。
     cursor: usize,
+    /// 历史记录（最新在末尾）。
+    history: Vec<String>,
+    /// 当前历史浏览位置（None = 不在浏览历史）。
+    history_index: Option<usize>,
+    /// 进入历史前的当前文本（用于恢复）。
+    saved_text: String,
 }
 
 impl InputEditor {
@@ -16,6 +25,9 @@ impl InputEditor {
         Self {
             text: String::new(),
             cursor: 0,
+            history: Vec::new(),
+            history_index: None,
+            saved_text: String::new(),
         }
     }
 
@@ -43,7 +55,6 @@ impl InputEditor {
     /// 删除光标前的字符（Backspace）。
     pub fn backspace(&mut self) {
         if self.cursor > 0 {
-            // 找到前一个字符边界
             let prev = self.text[..self.cursor]
                 .char_indices()
                 .next_back()
@@ -102,13 +113,73 @@ impl InputEditor {
     pub fn clear(&mut self) {
         self.text.clear();
         self.cursor = 0;
+        self.history_index = None;
     }
 
-    /// 取出文本并清空。
+    /// 取出文本并清空（同时记录到历史）。
     pub fn take(&mut self) -> String {
         let text = self.text.clone();
-        self.clear();
+
+        // 记录到历史（非空且与上一条不同）
+        if !text.is_empty() {
+            if self.history.last().map(|s| s.as_str()) != Some(&text) {
+                self.history.push(text.clone());
+                if self.history.len() > MAX_HISTORY {
+                    self.history.remove(0);
+                }
+            }
+        }
+
+        self.text.clear();
+        self.cursor = 0;
+        self.history_index = None;
         text
+    }
+
+    /// 浏览历史——上一条（上箭头）。
+    pub fn history_up(&mut self) {
+        if self.history.is_empty() {
+            return;
+        }
+
+        match self.history_index {
+            None => {
+                // 第一次按上：保存当前文本，跳到最新历史
+                self.saved_text = self.text.clone();
+                let idx = self.history.len() - 1;
+                self.history_index = Some(idx);
+                self.text = self.history[idx].clone();
+                self.cursor = self.text.len();
+            }
+            Some(idx) => {
+                if idx > 0 {
+                    let new_idx = idx - 1;
+                    self.history_index = Some(new_idx);
+                    self.text = self.history[new_idx].clone();
+                    self.cursor = self.text.len();
+                }
+            }
+        }
+    }
+
+    /// 浏览历史——下一条（下箭头）。
+    pub fn history_down(&mut self) {
+        match self.history_index {
+            None => return,
+            Some(idx) => {
+                if idx + 1 >= self.history.len() {
+                    // 回到当前输入
+                    self.history_index = None;
+                    self.text = self.saved_text.clone();
+                    self.cursor = self.text.len();
+                } else {
+                    let new_idx = idx + 1;
+                    self.history_index = Some(new_idx);
+                    self.text = self.history[new_idx].clone();
+                    self.cursor = self.text.len();
+                }
+            }
+        }
     }
 }
 
@@ -165,5 +236,57 @@ mod tests {
         ed.insert('\n');
         ed.insert('b');
         assert_eq!(ed.text(), "a\nb");
+    }
+
+    #[test]
+    fn history_navigation() {
+        let mut ed = InputEditor::new();
+
+        // 发送 3 条消息
+        ed.insert('a');
+        ed.take();
+        ed.insert('b');
+        ed.take();
+        ed.insert('c');
+        ed.take();
+
+        assert!(ed.is_empty());
+
+        // 上箭头：c → b → a
+        ed.history_up();
+        assert_eq!(ed.text(), "c");
+        ed.history_up();
+        assert_eq!(ed.text(), "b");
+        ed.history_up();
+        assert_eq!(ed.text(), "a");
+
+        // 再上：到底了，不变
+        ed.history_up();
+        assert_eq!(ed.text(), "a");
+
+        // 下箭头：a → b → c → 恢复
+        ed.history_down();
+        assert_eq!(ed.text(), "b");
+        ed.history_down();
+        assert_eq!(ed.text(), "c");
+        ed.history_down();
+        assert!(ed.is_empty()); // 恢复空输入
+    }
+
+    #[test]
+    fn history_saves_current_on_up() {
+        let mut ed = InputEditor::new();
+        ed.take(); // 空，不记录
+        ed.insert('x');
+        ed.take();
+
+        // 当前输入 "hello"，按上
+        for c in "hello".chars() { ed.insert(c); }
+        ed.history_up();
+        assert_eq!(ed.text(), "x");
+
+        // 按下恢复 "hello"
+        ed.history_down();
+        assert_eq!(ed.text(), "hello");
     }
 }
