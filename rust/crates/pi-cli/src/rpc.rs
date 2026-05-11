@@ -145,6 +145,14 @@ pub enum RpcCommand {
         id: Option<String>,
         enabled: bool,
     },
+    /// 扩展 UI 响应（IDE 回复扩展的 UI 请求）。
+    #[serde(rename = "extension_ui_response")]
+    ExtensionUiResponse {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(flatten)]
+        response: ExtensionUiResponseData,
+    },
 }
 
 // ============================================================================
@@ -237,6 +245,14 @@ pub enum RpcEvent {
     /// 自动重试已设置。
     #[serde(rename = "auto_retry_set")]
     AutoRetrySet { id: Option<String>, enabled: bool },
+    /// 扩展 UI 请求（piso → IDE，请求用户交互）。
+    #[serde(rename = "extension_ui_request")]
+    ExtensionUiRequest {
+        #[serde(default)]
+        id: Option<String>,
+        #[serde(flatten)]
+        request: ExtensionUiRequestData,
+    },
 }
 
 /// 模型信息。
@@ -245,6 +261,64 @@ pub struct ModelInfo {
     pub provider: String,
     pub id: String,
     pub name: String,
+}
+
+// ============================================================================
+// Extension UI Protocol
+// ============================================================================
+
+/// 扩展 UI 请求数据（piso → IDE）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "ui_type")]
+pub enum ExtensionUiRequestData {
+    /// 选择列表。
+    #[serde(rename = "select")]
+    Select {
+        title: String,
+        options: Vec<String>,
+    },
+    /// 确认对话框。
+    #[serde(rename = "confirm")]
+    Confirm {
+        title: String,
+        message: String,
+    },
+    /// 文本输入。
+    #[serde(rename = "input")]
+    Input {
+        title: String,
+        placeholder: String,
+    },
+    /// 设置 widget 内容。
+    #[serde(rename = "set_widget")]
+    SetWidget {
+        key: String,
+        content: String,
+    },
+    /// 设置状态栏文本。
+    #[serde(rename = "set_status")]
+    SetStatus {
+        key: String,
+        text: String,
+    },
+}
+
+/// 扩展 UI 响应数据（IDE → piso）。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "ui_type")]
+pub enum ExtensionUiResponseData {
+    /// 选择结果。
+    #[serde(rename = "select")]
+    Select { selected_index: usize },
+    /// 确认结果。
+    #[serde(rename = "confirm")]
+    Confirm { confirmed: bool },
+    /// 输入结果。
+    #[serde(rename = "input")]
+    Input { value: String },
+    /// 确认接收。
+    #[serde(rename = "ack")]
+    Ack,
 }
 
 /// RPC 消息摘要（用于 get_messages 响应）。
@@ -752,6 +826,10 @@ pub async fn run_rpc(
                         auto_retry = enabled;
                         emit(&mut stdout_writer, &RpcEvent::AutoRetrySet { id, enabled }).await?;
                     }
+                    RpcCommand::ExtensionUiResponse { id, response: _ } => {
+                        // Extension UI response — handled by extension system
+                        emit(&mut stdout_writer, &RpcEvent::Done { id }).await?;
+                    }
                 }
             }
             InternalCommand::AgentDone => {
@@ -970,5 +1048,97 @@ mod tests {
         };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("auto_compaction_set"));
+    }
+
+    #[test]
+    fn serialize_extension_ui_request_select() {
+        let event = RpcEvent::ExtensionUiRequest {
+            id: Some("ext-1".to_string()),
+            request: ExtensionUiRequestData::Select {
+                title: "Choose file".to_string(),
+                options: vec!["a.rs".to_string(), "b.rs".to_string()],
+            },
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("extension_ui_request"));
+        assert!(json.contains("Choose file"));
+    }
+
+    #[test]
+    fn serialize_extension_ui_request_confirm() {
+        let event = RpcEvent::ExtensionUiRequest {
+            id: None,
+            request: ExtensionUiRequestData::Confirm {
+                title: "Delete?".to_string(),
+                message: "Are you sure?".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("confirm"));
+    }
+
+    #[test]
+    fn serialize_extension_ui_request_input() {
+        let event = RpcEvent::ExtensionUiRequest {
+            id: None,
+            request: ExtensionUiRequestData::Input {
+                title: "Name".to_string(),
+                placeholder: "Enter name...".to_string(),
+            },
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("input"));
+    }
+
+    #[test]
+    fn deserialize_extension_ui_response_select() {
+        let json = r#"{"type":"extension_ui_response","ui_type":"select","selected_index":2}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            cmd,
+            RpcCommand::ExtensionUiResponse {
+                response: ExtensionUiResponseData::Select { selected_index: 2 },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn deserialize_extension_ui_response_confirm() {
+        let json = r#"{"type":"extension_ui_response","ui_type":"confirm","confirmed":true}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            cmd,
+            RpcCommand::ExtensionUiResponse {
+                response: ExtensionUiResponseData::Confirm { confirmed: true },
+                ..
+            }
+        ));
+    }
+
+    #[test]
+    fn deserialize_extension_ui_response_input() {
+        let json = r#"{"type":"extension_ui_response","ui_type":"input","value":"hello"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            cmd,
+            RpcCommand::ExtensionUiResponse {
+                response: ExtensionUiResponseData::Input { value },
+                ..
+            } if value == "hello"
+        ));
+    }
+
+    #[test]
+    fn deserialize_extension_ui_response_ack() {
+        let json = r#"{"type":"extension_ui_response","ui_type":"ack"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(
+            cmd,
+            RpcCommand::ExtensionUiResponse {
+                response: ExtensionUiResponseData::Ack,
+                ..
+            }
+        ));
     }
 }
