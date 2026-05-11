@@ -248,6 +248,9 @@ async fn run_print(cli: Cli) -> Result<()> {
     }));
     agent = agent.with_stream_sink(print_sink);
 
+    // 解析 @file 引用
+    let user_message = pi_tools::fileref::resolve_file_refs(&user_message, &cwd).0;
+
     // 运行 agent
     let output = agent.run(&user_message).await?;
 
@@ -540,7 +543,7 @@ async fn run_list_models(_cli: Cli) -> Result<()> {
 }
 
 /// 收集所有可用模型（用于模型选择器）。
-fn collect_available_models(auth: &AuthStorage) -> Vec<(String, String, String)> {
+pub fn collect_available_models(auth: &AuthStorage) -> Vec<(String, String, String)> {
     let mut models = Vec::new();
     for prov_name in auth.configured_providers() {
         if let Some(pc) = auth.get_provider(&prov_name) {

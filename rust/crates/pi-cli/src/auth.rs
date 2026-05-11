@@ -61,6 +61,11 @@ pub struct AuthStorage {
 }
 
 impl AuthStorage {
+    /// 创建空的 AuthStorage。
+    pub fn empty() -> Self {
+        Self { keys: HashMap::new(), providers: HashMap::new() }
+    }
+
     /// 从环境变量和配置文件加载所有可用的 API Key 和 provider 配置。
     pub fn load(config_dir: Option<&Path>) -> Result<Self> {
         let mut keys = HashMap::new();

@@ -9,7 +9,9 @@
 //! - stdout: 每行一个 JSON 事件/响应
 //! - stderr: 日志（不影响协议）
 //!
-//! 当前实现核心子集：prompt, abort, get_state, get_messages, new_session。
+//! 完整命令集：prompt, abort, get_state, get_messages, new_session,
+//! set_model, cycle_model, get_available_models, steer, follow_up,
+//! compact, bash, get_commands.
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -70,6 +72,58 @@ pub enum RpcCommand {
         #[serde(default)]
         id: Option<String>,
     },
+    /// 切换模型。
+    #[serde(rename = "set_model")]
+    SetModel {
+        #[serde(default)]
+        id: Option<String>,
+        model: String,
+    },
+    /// 切换到下一个可用模型。
+    #[serde(rename = "cycle_model")]
+    CycleModel {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    /// 获取可用模型列表。
+    #[serde(rename = "get_available_models")]
+    GetAvailableModels {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    /// 注入流式引导（agent 运行时）。
+    #[serde(rename = "steer")]
+    Steer {
+        #[serde(default)]
+        id: Option<String>,
+        message: String,
+    },
+    /// 排队下一条消息。
+    #[serde(rename = "follow_up")]
+    FollowUp {
+        #[serde(default)]
+        id: Option<String>,
+        message: String,
+    },
+    /// 触发上下文压缩。
+    #[serde(rename = "compact")]
+    Compact {
+        #[serde(default)]
+        id: Option<String>,
+    },
+    /// 执行远程命令。
+    #[serde(rename = "bash")]
+    Bash {
+        #[serde(default)]
+        id: Option<String>,
+        command: String,
+    },
+    /// 获取可用 slash 命令。
+    #[serde(rename = "get_commands")]
+    GetCommands {
+        #[serde(default)]
+        id: Option<String>,
+    },
 }
 
 // ============================================================================
@@ -117,6 +171,56 @@ pub enum RpcEvent {
         id: Option<String>,
         message: String,
     },
+    /// 可用模型列表。
+    #[serde(rename = "available_models")]
+    AvailableModels {
+        id: Option<String>,
+        models: Vec<ModelInfo>,
+    },
+    /// 当前模型。
+    #[serde(rename = "current_model")]
+    CurrentModel {
+        id: Option<String>,
+        model: String,
+    },
+    /// Bash 输出。
+    #[serde(rename = "bash_output")]
+    BashOutput {
+        id: Option<String>,
+        output: String,
+        exit_code: i32,
+    },
+    /// 命令列表。
+    #[serde(rename = "commands")]
+    Commands {
+        id: Option<String>,
+        commands: Vec<String>,
+    },
+    /// 压缩结果。
+    #[serde(rename = "compact_result")]
+    CompactResult {
+        id: Option<String>,
+        removed: usize,
+        remaining: usize,
+    },
+    /// 排队消息确认。
+    #[serde(rename = "follow_up_queued")]
+    FollowUpQueued {
+        id: Option<String>,
+    },
+    /// 引导已注入。
+    #[serde(rename = "steered")]
+    Steered {
+        id: Option<String>,
+    },
+}
+
+/// 模型信息。
+#[derive(Debug, Serialize)]
+pub struct ModelInfo {
+    pub provider: String,
+    pub id: String,
+    pub name: String,
 }
 
 /// RPC 消息摘要（用于 get_messages 响应）。
@@ -166,7 +270,13 @@ pub async fn run_rpc(
     // Agent state
     #[allow(unused_assignments)]
     let mut agent_running = false;
-    let _session_id = session.id().to_string();
+    let mut current_model = model.clone();
+    let mut follow_up_queue: Vec<String> = Vec::new();
+
+    // 可用模型列表
+    let available_models = crate::dispatch::collect_available_models(
+        &crate::auth::AuthStorage::load(None).unwrap_or_else(|_| crate::auth::AuthStorage::empty()),
+    );
 
     // stdin reader task
     let stdin_cmd_tx = cmd_tx.clone();
@@ -230,36 +340,18 @@ pub async fn run_rpc(
                             }).await?;
                             continue;
                         }
+                        // 解析 @file 引用
+                        let resolved_message = pi_tools::fileref::resolve_file_refs(&message, &cwd).0;
                         agent_running = true;
                         abort_flag.store(false, Ordering::SeqCst);
                         emit(&mut stdout_writer, &RpcEvent::StateChange {
                             state: "running".to_string(),
                         }).await?;
 
-                        // 创建 driver
                         let driver = make_driver(&api_type);
 
                         // 创建 sink — 直接写 stdout（同步，因为 sink 回调不能是 async）
-                        let _sink_id = id.clone();
-                        let sink: Arc<StreamSink> = Arc::new(Box::new(move |event| {
-                            let rpc_event = match event {
-                                StreamEvent::TextDelta { text } => Some(RpcEvent::TextDelta { text }),
-                                StreamEvent::ThinkingDelta { thinking } => Some(RpcEvent::ThinkingDelta { thinking }),
-                                StreamEvent::ToolCallStart { name, .. } => Some(RpcEvent::ToolCallStart { name }),
-                                StreamEvent::ToolResult { name, output, is_error, .. } => {
-                                    Some(RpcEvent::ToolResult { name, output, is_error })
-                                }
-                                _ => None,
-                            };
-                            if let Some(ev) = rpc_event {
-                                if let Ok(json) = serde_json::to_string(&ev) {
-                                    let _ = std::io::Write::write_all(
-                                        &mut std::io::stdout(),
-                                        format!("{}\n", json).as_bytes(),
-                                    );
-                                }
-                            }
-                        }));
+                        let sink = make_sync_sink();
 
                         // 准备 agent turn（用 dummy session swap）
                         let dummy_path = std::env::temp_dir().join(format!("piso-rpc-dummy-{}", std::process::id()));
@@ -270,7 +362,7 @@ pub async fn run_rpc(
                             std::mem::replace(&mut session, dummy_session),
                             driver,
                             tools.clone_for_agent(),
-                            &model,
+                            &current_model,
                         )
                         .with_api_key(&api_key)
                         .with_system_prompt(&system_prompt)
@@ -281,7 +373,7 @@ pub async fn run_rpc(
                         }
 
                         // 运行 agent
-                        match agent.run(&message).await {
+                        match agent.run(&resolved_message).await {
                             Ok(_) => {}
                             Err(e) => {
                                 emit(&mut stdout_writer, &RpcEvent::Error {
@@ -299,6 +391,40 @@ pub async fn run_rpc(
                             state: "idle".to_string(),
                         }).await?;
                         emit(&mut stdout_writer, &RpcEvent::Done { id }).await?;
+
+                        // 处理排队的 follow_up / steer 消息
+                        while let Some(next_msg) = follow_up_queue.pop() {
+                            agent_running = true;
+                            emit(&mut stdout_writer, &RpcEvent::StateChange {
+                                state: "running".to_string(),
+                            }).await?;
+
+                            let driver = make_driver(&api_type);
+                            let sink2 = make_sync_sink();
+                            let dummy_path = std::env::temp_dir().join(format!("piso-rpc-dummy-{}", std::process::id()));
+                            let dummy_session = JsonlSession::create(&dummy_path, &cwd_str).await?;
+                            let mut agent = AgentLoop::new(
+                                std::mem::replace(&mut session, dummy_session),
+                                driver,
+                                tools.clone_for_agent(),
+                                &current_model,
+                            )
+                            .with_api_key(&api_key)
+                            .with_system_prompt(&system_prompt)
+                            .with_stream_sink(sink2);
+                            if let Some(url) = &base_url {
+                                agent = agent.with_base_url(url);
+                            }
+
+                            let _ = agent.run(&next_msg).await;
+                            session = agent.into_session();
+                            agent_running = false;
+
+                            emit(&mut stdout_writer, &RpcEvent::StateChange {
+                                state: "idle".to_string(),
+                            }).await?;
+                            emit(&mut stdout_writer, &RpcEvent::Done { id: None }).await?;
+                        }
                     }
 
                     RpcCommand::Abort { id } => {
@@ -360,6 +486,113 @@ pub async fn run_rpc(
                             session_id: session.id().to_string(),
                         }).await?;
                     }
+
+                    RpcCommand::SetModel { id, model: new_model } => {
+                        current_model = new_model.clone();
+                        emit(&mut stdout_writer, &RpcEvent::CurrentModel {
+                            id,
+                            model: new_model,
+                        }).await?;
+                    }
+
+                    RpcCommand::CycleModel { id } => {
+                        if let Some(idx) = available_models.iter().position(|(_, mid, _)| *mid == current_model) {
+                            let next_idx = (idx + 1) % available_models.len();
+                            let (_, mid, name) = &available_models[next_idx];
+                            current_model = mid.clone();
+                            emit(&mut stdout_writer, &RpcEvent::CurrentModel {
+                                id,
+                                model: format!("{mid} ({name})"),
+                            }).await?;
+                        } else {
+                            emit(&mut stdout_writer, &RpcEvent::Error {
+                                id,
+                                message: format!("Current model '{}' not in available list", current_model),
+                            }).await?;
+                        }
+                    }
+
+                    RpcCommand::GetAvailableModels { id } => {
+                        let models: Vec<ModelInfo> = available_models.iter()
+                            .map(|(prov, mid, name)| ModelInfo {
+                                provider: prov.clone(),
+                                id: mid.clone(),
+                                name: name.clone(),
+                            })
+                            .collect();
+                        emit(&mut stdout_writer, &RpcEvent::AvailableModels { id, models }).await?;
+                    }
+
+                    RpcCommand::Steer { id, message } => {
+                        // 注入引导消息到排队列表前面
+                        follow_up_queue.insert(0, message);
+                        emit(&mut stdout_writer, &RpcEvent::Steered { id }).await?;
+                    }
+
+                    RpcCommand::FollowUp { id, message } => {
+                        follow_up_queue.push(message);
+                        emit(&mut stdout_writer, &RpcEvent::FollowUpQueued { id }).await?;
+                    }
+
+                    RpcCommand::Compact { id } => {
+                        let total = session.len();
+                        if total > 12 {
+                            let removed = total - 12;
+                            session.compact_keep_last(12).await?;
+                            emit(&mut stdout_writer, &RpcEvent::CompactResult {
+                                id,
+                                removed,
+                                remaining: 12,
+                            }).await?;
+                        } else {
+                            emit(&mut stdout_writer, &RpcEvent::CompactResult {
+                                id,
+                                removed: 0,
+                                remaining: total,
+                            }).await?;
+                        }
+                    }
+
+                    RpcCommand::Bash { id, command } => {
+                        let output = tokio::process::Command::new("bash")
+                            .arg("-c")
+                            .arg(&command)
+                            .output()
+                            .await;
+                        match output {
+                            Ok(out) => {
+                                let stdout_str = String::from_utf8_lossy(&out.stdout).to_string();
+                                let stderr_str = String::from_utf8_lossy(&out.stderr).to_string();
+                                let combined = if stderr_str.is_empty() {
+                                    stdout_str
+                                } else {
+                                    format!("{stdout_str}\n{stderr_str}")
+                                };
+                                emit(&mut stdout_writer, &RpcEvent::BashOutput {
+                                    id,
+                                    output: combined,
+                                    exit_code: out.status.code().unwrap_or(-1),
+                                }).await?;
+                            }
+                            Err(e) => {
+                                emit(&mut stdout_writer, &RpcEvent::Error {
+                                    id,
+                                    message: format!("Failed to execute: {e}"),
+                                }).await?;
+                            }
+                        }
+                    }
+
+                    RpcCommand::GetCommands { id } => {
+                        let commands = vec![
+                            "/help".to_string(), "/clear".to_string(), "/compact".to_string(),
+                            "/cost".to_string(), "/usage".to_string(), "/sessions".to_string(),
+                            "/find".to_string(), "/grep".to_string(), "/new".to_string(),
+                            "/reload".to_string(), "/copy".to_string(), "/fork".to_string(),
+                            "/session".to_string(), "/name".to_string(), "/export".to_string(),
+                        ];
+                        emit(&mut stdout_writer, &RpcEvent::Commands { id, commands }).await?;
+                    }
                 }
             }
             InternalCommand::AgentDone => {
@@ -405,4 +638,27 @@ fn make_tools(cwd: &std::path::Path) -> ToolRegistry {
     tools.register(FindTool::new(&cwd_str));
     tools.register(GrepTool::new(&cwd_str));
     tools
+}
+
+/// 创建同步 sink（写 stdout）。
+fn make_sync_sink() -> Arc<StreamSink> {
+    Arc::new(Box::new(move |event| {
+        let rpc_event = match event {
+            StreamEvent::TextDelta { text } => Some(RpcEvent::TextDelta { text }),
+            StreamEvent::ThinkingDelta { thinking } => Some(RpcEvent::ThinkingDelta { thinking }),
+            StreamEvent::ToolCallStart { name, .. } => Some(RpcEvent::ToolCallStart { name }),
+            StreamEvent::ToolResult { name, output, is_error, .. } => {
+                Some(RpcEvent::ToolResult { name, output, is_error })
+            }
+            _ => None,
+        };
+        if let Some(ev) = rpc_event {
+            if let Ok(json) = serde_json::to_string(&ev) {
+                let _ = std::io::Write::write_all(
+                    &mut std::io::stdout(),
+                    format!("{}\n", json).as_bytes(),
+                );
+            }
+        }
+    }))
 }

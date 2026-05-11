@@ -185,6 +185,32 @@ impl JsonlSession {
         self.entries.is_empty()
     }
 
+    /// 压缩会话，只保留最后 N 条消息。
+    pub async fn compact_keep_last(&mut self, keep: usize) -> anyhow::Result<usize> {
+        if self.entries.len() <= keep {
+            return Ok(0);
+        }
+        let removed = self.entries.len() - keep;
+        self.entries = self.entries.split_off(self.entries.len() - keep);
+        self.rewrite_file().await?;
+        Ok(removed)
+    }
+
+    /// 重写整个 JSONL 文件。
+    async fn rewrite_file(&self) -> anyhow::Result<()> {
+        use tokio::io::AsyncWriteExt;
+        let tmp_path = self.path.with_extension("jsonl.tmp");
+        let mut f = tokio::fs::File::create(&tmp_path).await?;
+        for entry in &self.entries {
+            let line = serde_json::to_string(entry)?;
+            f.write_all(line.as_bytes()).await?;
+            f.write_all(b"\n").await?;
+        }
+        f.flush().await?;
+        tokio::fs::rename(&tmp_path, &self.path).await?;
+        Ok(())
+    }
+
     fn generate_id() -> String {
         // 短 ID，匹配 TS 版本的 randomUUID().slice(0, 8)
         use std::time::{SystemTime, UNIX_EPOCH};

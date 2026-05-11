@@ -10,6 +10,7 @@ pub mod find;
 pub mod grep;
 pub mod lsp;
 pub mod lsp_client;
+pub mod fileref;
 pub mod ls;
 pub mod read;
 pub mod registry;
