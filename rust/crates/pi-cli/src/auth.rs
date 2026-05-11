@@ -25,6 +25,7 @@ const ENV_KEY_MAP: &[(&str, &str)] = &[
     ("FIREWORKS_API_KEY", "fireworks"),
     ("MISTRAL_API_KEY", "mistral"),
     ("XAI_API_KEY", "xai"),
+    ("GLM_API_KEY", "glm"),
 ];
 
 /// Provider 配置（从 models.json 加载）。

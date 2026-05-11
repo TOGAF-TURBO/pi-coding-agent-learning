@@ -102,8 +102,8 @@ async fn run_print(cli: Cli) -> Result<()> {
 
     // 从 models.json 获取 provider 配置
     let provider_config = auth.get_provider(provider);
-    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages");
-    let base_url = provider_config.and_then(|c| c.base_url.clone());
+    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or_else(|| default_api_type(provider));
+    let base_url = cli.base_url.clone().or_else(|| provider_config.and_then(|c| c.base_url.clone()));
 
     // 根据 API 类型创建对应的 LLM driver
     let driver: Box<dyn LlmDriver> = match api_type {
@@ -307,7 +307,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
     let provider_config = auth.get_provider(&provider);
-    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages").to_string();
+    let api_type = provider_config.map(|c| c.api.clone()).unwrap_or_else(|| default_api_type(&provider).to_string());
     let base_url = provider_config.and_then(|c| c.base_url.clone());
 
     let effective_base_url = if api_type == "openai-completions" || api_type == "openai-responses" {
@@ -388,7 +388,7 @@ async fn run_rpc(cli: Cli) -> Result<()> {
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
     let provider_config = auth.get_provider(&provider);
-    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages").to_string();
+    let api_type = provider_config.map(|c| c.api.clone()).unwrap_or_else(|| default_api_type(&provider).to_string());
     let base_url = provider_config.and_then(|c| c.base_url.clone());
 
     // OpenAI-compat 需要追加 /chat/completions
@@ -420,6 +420,15 @@ async fn run_rpc(cli: Cli) -> Result<()> {
         prompt_builder.build(),
         cwd,
     ).await
+}
+
+/// 根据 provider 名推断默认 API type（无 models.json 配置时的 fallback）。
+fn default_api_type(provider: &str) -> &'static str {
+    match provider {
+        "openai" | "deepseek" | "groq" | "openrouter" | "together" | "fireworks" | "glm" | "zhipu" => "openai-completions",
+        "google" | "gemini" => "google-gemini",
+        _ => "anthropic-messages",
+    }
 }
 
 async fn run_list_models(_cli: Cli) -> Result<()> {

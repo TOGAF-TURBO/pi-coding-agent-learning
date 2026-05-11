@@ -24,6 +24,10 @@ pub struct Cli {
     #[arg(long)]
     pub api_key: Option<String>,
 
+    /// Base URL for the provider API.
+    #[arg(long)]
+    pub base_url: Option<String>,
+
     /// Thinking level (off, minimal, low, medium, high, xhigh).
     #[arg(long)]
     pub thinking: Option<String>,
