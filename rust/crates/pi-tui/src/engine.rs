@@ -126,6 +126,11 @@ impl TuiEngine {
 impl Drop for TuiEngine {
     fn drop(&mut self) {
         self.reader_handle.abort();
+        // 恢复终端标题
+        let _ = std::io::Write::write_all(
+            &mut std::io::stderr(),
+            b"\x1b]0;\x07",
+        );
         let _ = disable_raw_mode();
         let _ = crossterm::execute!(io::stderr(), LeaveAlternateScreen);
     }

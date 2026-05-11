@@ -251,6 +251,20 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let keybindings = cfg.keybindings;
     let extension_runner = cfg.extension_runner.take();
     let mut engine = TuiEngine::init()?;
+
+    // 设置终端标题（OSC 0;title BEL）
+    {
+        let cwd_name = std::path::Path::new(&cfg.cwd)
+            .file_name()
+            .map(|n| n.to_string_lossy().to_string())
+            .unwrap_or_default();
+        let title = format!("piso - {}", cwd_name);
+        let _ = std::io::Write::write_all(
+            &mut std::io::stderr(),
+            format!("\x1b]0;{}\x07", title).as_bytes(),
+        );
+    }
+
     let mut input = crate::input::InputEditor::new();
     let mut scroll_offset: usize = 0;
     let mut tick: usize = 0;
