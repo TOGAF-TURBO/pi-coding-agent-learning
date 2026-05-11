@@ -20,3 +20,32 @@ pub struct PromptTemplate {
     pub description: String,
     pub template: String,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn skill_serialization() {
+        let skill = Skill {
+            name: "test-skill".to_string(),
+            description: "A test skill".to_string(),
+            content: "Do something useful".to_string(),
+        };
+        let json = serde_json::to_string(&skill).unwrap();
+        let parsed: Skill = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.name, "test-skill");
+        assert_eq!(parsed.content, "Do something useful");
+    }
+
+    #[test]
+    fn prompt_template() {
+        let tmpl = PromptTemplate {
+            name: "review".to_string(),
+            description: "Code review template".to_string(),
+            template: "Review this code: {{input}}".to_string(),
+        };
+        assert_eq!(tmpl.name, "review");
+        assert!(tmpl.template.contains("{{input}}"));
+    }
+}

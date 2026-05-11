@@ -40,3 +40,40 @@ pub struct ModelEntry {
     /// 支持的思考级别。
     pub thinking_levels: Vec<String>,
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn model_info_serialization() {
+        let info = ModelInfo {
+            id: "claude-sonnet-4".to_string(),
+            name: "Claude Sonnet 4".to_string(),
+            provider: "anthropic".to_string(),
+            api: "anthropic-messages".to_string(),
+            reasoning: true,
+            context_window: 200_000,
+            max_tokens: 16_384,
+            cost: None,
+        };
+        let json = serde_json::to_string(&info).unwrap();
+        let parsed: ModelInfo = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.id, info.id);
+        assert_eq!(parsed.reasoning, true);
+        assert_eq!(parsed.context_window, 200_000);
+    }
+
+    #[test]
+    fn model_cost_serialization() {
+        let cost = ModelCost {
+            input: 3.0,
+            output: 15.0,
+            cache_write: Some(3.75),
+            cache_read: Some(0.3),
+        };
+        let json = serde_json::to_string(&cost).unwrap();
+        let parsed: ModelCost = serde_json::from_str(&json).unwrap();
+        assert!((parsed.input - 3.0).abs() < 0.01);
+    }
+}

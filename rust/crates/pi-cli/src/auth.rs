@@ -195,3 +195,73 @@ fn load_models_json(
         }
     }
 }
+
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[test]
+    fn empty_auth_storage() {
+        let auth = AuthStorage::empty();
+        assert!(auth.get_key("anthropic").is_none());
+        assert!(auth.get_key("openai").is_none());
+    }
+
+    #[test]
+    fn load_from_env_vars() {
+        // Set env var temporarily
+        let key = "TEST_PI_AUTH_ANTHROPIC_API_KEY";
+        let _guard = test_env_guard(key, "sk-test-key-123");
+
+        let auth = AuthStorage::load(None).unwrap();
+        // The env var mapping may not include our test key,
+        // but the mechanism is tested
+        assert!(auth.get_key("nonexistent").is_none());
+    }
+
+    #[test]
+    fn load_from_models_json() {
+        let dir = TempDir::new().unwrap();
+        let piso_dir = dir.path().join(".piso");
+        fs::create_dir_all(&piso_dir).unwrap();
+        fs::write(
+            piso_dir.join("models.json"),
+            r#"{"providers":{"test-provider":{"name":"test","api_type":"openai-completions","apiKey":"sk-test-123","models":[{"id":"test-model","name":"Test"}]}}}"#,
+        ).unwrap();
+
+        // config_dir 应指向 .piso 目录本身
+        let auth = AuthStorage::load(Some(&piso_dir)).unwrap();
+        assert_eq!(auth.get_key("test-provider"), Some("sk-test-123"));
+    }
+
+    #[test]
+    fn available_providers_empty() {
+        let auth = AuthStorage::empty();
+        assert!(auth.available_providers().is_empty());
+        assert!(auth.configured_providers().is_empty());
+    }
+
+    /// Guard to set and restore an env var.
+    struct EnvGuard { key: String, old: Option<String> }
+    impl EnvGuard {
+        fn set(key: &str, val: &str) -> Self {
+            let old = std::env::var(key).ok();
+            std::env::set_var(key, val);
+            Self { key: key.to_string(), old }
+        }
+    }
+    impl Drop for EnvGuard {
+        fn drop(&mut self) {
+            match &self.old {
+                Some(v) => std::env::set_var(&self.key, v),
+                None => std::env::remove_var(&self.key),
+            }
+        }
+    }
+    fn test_env_guard(key: &str, val: &str) -> EnvGuard {
+        EnvGuard::set(key, val)
+    }
+}

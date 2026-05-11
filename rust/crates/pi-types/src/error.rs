@@ -36,3 +36,33 @@ pub enum PiError {
     #[error("{0}")]
     Other(String),
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn llm_error_display() {
+        let err = PiError::Llm("timeout".to_string());
+        let msg = err.to_string();
+        assert!(msg.contains("timeout"));
+    }
+
+    #[test]
+    fn tool_error_display() {
+        let err = PiError::Tool {
+            tool: "bash".to_string(),
+            message: "permission denied".to_string(),
+        };
+        let msg = err.to_string();
+        assert!(msg.contains("bash"));
+        assert!(msg.contains("permission denied"));
+    }
+
+    #[test]
+    fn io_error_conversion() {
+        let io_err = std::io::Error::new(std::io::ErrorKind::NotFound, "file not found");
+        let pi_err: PiError = io_err.into();
+        assert!(matches!(pi_err, PiError::Io(_)));
+    }
+}

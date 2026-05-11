@@ -671,3 +671,95 @@ fn make_sync_sink() -> Arc<StreamSink> {
         }
     }))
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn deserialize_prompt_command() {
+        let json = r#"{"type":"prompt","message":"hello","id":"1"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            RpcCommand::Prompt { id, message } => {
+                assert_eq!(id, Some("1".to_string()));
+                assert_eq!(message, "hello");
+            }
+            _ => panic!("Expected Prompt"),
+        }
+    }
+
+    #[test]
+    fn deserialize_abort_command() {
+        let json = r#"{"type":"abort"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(cmd, RpcCommand::Abort { id: None }));
+    }
+
+    #[test]
+    fn deserialize_set_model() {
+        let json = r#"{"type":"set_model","model":"gpt-4o"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            RpcCommand::SetModel { model, .. } => assert_eq!(model, "gpt-4o"),
+            _ => panic!("Expected SetModel"),
+        }
+    }
+
+    #[test]
+    fn deserialize_compact() {
+        let json = r#"{"type":"compact"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        assert!(matches!(cmd, RpcCommand::Compact { .. }));
+    }
+
+    #[test]
+    fn deserialize_bash() {
+        let json = r#"{"type":"bash","command":"ls -la"}"#;
+        let cmd: RpcCommand = serde_json::from_str(json).unwrap();
+        match cmd {
+            RpcCommand::Bash { command, .. } => assert_eq!(command, "ls -la"),
+            _ => panic!("Expected Bash"),
+        }
+    }
+
+    #[test]
+    fn serialize_text_delta_event() {
+        let event = RpcEvent::TextDelta { text: "hello".to_string() };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("text_delta"));
+        assert!(json.contains("hello"));
+    }
+
+    #[test]
+    fn serialize_state_event() {
+        let event = RpcEvent::State {
+            id: Some("1".to_string()),
+            state: "idle".to_string(),
+            message_count: 5,
+            session_id: "abc".to_string(),
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("state"));
+        assert!(json.contains("idle"));
+    }
+
+    #[test]
+    fn serialize_bash_output() {
+        let event = RpcEvent::BashOutput {
+            id: None,
+            output: "file1.txt\nfile2.txt".to_string(),
+            exit_code: 0,
+        };
+        let json = serde_json::to_string(&event).unwrap();
+        assert!(json.contains("bash_output"));
+        assert!(json.contains("exit_code"));
+    }
+
+    #[test]
+    fn deserialize_invalid_command() {
+        let json = r#"{"type":"unknown"}"#;
+        let result = serde_json::from_str::<RpcCommand>(json);
+        assert!(result.is_err());
+    }
+}

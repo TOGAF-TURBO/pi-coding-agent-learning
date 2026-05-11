@@ -61,3 +61,51 @@ impl Default for ProviderRegistry {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn registry_has_builtin_providers() {
+        let reg = ProviderRegistry::new();
+        let names = reg.names();
+        assert!(names.contains(&"anthropic".to_string()));
+        assert!(names.contains(&"openai".to_string()));
+        assert!(names.contains(&"google".to_string()));
+        assert!(names.contains(&"glm".to_string()));
+        assert!(names.contains(&"deepseek".to_string()));
+    }
+
+    #[test]
+    fn get_existing_provider() {
+        let reg = ProviderRegistry::new();
+        let driver = reg.get("anthropic");
+        assert!(driver.is_some());
+        assert_eq!(driver.unwrap().name(), "anthropic");
+    }
+
+    #[test]
+    fn get_nonexistent_provider() {
+        let reg = ProviderRegistry::new();
+        assert!(reg.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn register_custom_provider() {
+        let reg = ProviderRegistry::new();
+        reg.register("custom", Arc::new(OpenAiDriver::new()));
+        assert!(reg.get("custom").is_some());
+        assert_eq!(reg.get("custom").unwrap().name(), "openai");
+    }
+
+    #[test]
+    fn openai_compatible_providers() {
+        let reg = ProviderRegistry::new();
+        for name in &["glm", "deepseek", "groq", "openrouter", "mistral"] {
+            let driver = reg.get(name);
+            assert!(driver.is_some(), "missing provider: {}", name);
+            assert_eq!(driver.unwrap().name(), "openai");
+        }
+    }
+}

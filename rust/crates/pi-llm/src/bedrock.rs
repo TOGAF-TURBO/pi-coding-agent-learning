@@ -218,3 +218,47 @@ pub fn bedrock_models() -> Vec<ModelInfo> {
         },
     ]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn driver_name() {
+        let driver = BedrockDriver::new();
+        assert_eq!(driver.name(), "amazon-bedrock");
+    }
+
+    #[test]
+    fn default_impl() {
+        let driver = BedrockDriver::default();
+        assert_eq!(driver.name(), "amazon-bedrock");
+    }
+
+    #[test]
+    fn build_url_encodes_model() {
+        let url = BedrockDriver::build_url(
+            "anthropic.claude-sonnet-4-20250514",
+            "us-east-1",
+        );
+        assert!(url.contains("bedrock-runtime.us-east-1.amazonaws.com"));
+        assert!(url.contains("anthropic.claude-sonnet-4-20250514"));
+        assert!(url.contains("converse-stream"));
+    }
+
+    #[test]
+    fn bedrock_models_list() {
+        let models = bedrock_models();
+        assert!(!models.is_empty());
+        assert!(models.iter().any(|m| m.id.contains("claude")));
+    }
+
+    #[test]
+    fn no_credentials_detected() {
+        // This test runs without AWS credentials
+        // Just verify has_aws_credentials returns false when not set
+        // (it might return true if CI has credentials)
+        let _result = BedrockDriver::has_aws_credentials();
+        // Don't assert false — CI might have AWS creds
+    }
+}

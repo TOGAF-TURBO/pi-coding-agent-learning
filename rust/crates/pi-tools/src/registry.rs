@@ -69,3 +69,94 @@ impl Default for ToolRegistry {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use serde_json::Value;
+    use pi_types::tool::{ToolResult, ToolExecutor};
+    use pi_types::error::PiError;
+
+    struct DummyTool;
+
+    #[async_trait]
+    impl ToolExecutor for DummyTool {
+        fn definition(&self) -> ToolDefinition {
+            ToolDefinition {
+                name: "dummy".to_string(),
+                description: "A test tool".to_string(),
+                parameters: serde_json::json!({}),
+                requires_approval: false,
+            }
+        }
+
+        async fn execute(&self, _input: Value) -> Result<ToolResult, PiError> {
+            Ok(ToolResult {
+                tool_use_id: String::new(),
+                output: "dummy result".to_string(),
+                is_error: false,
+                duration_ms: None,
+            })
+        }
+    }
+
+    #[test]
+    fn register_and_get() {
+        let reg = ToolRegistry::new();
+        reg.register(DummyTool);
+
+        assert!(reg.get("dummy").is_some());
+        assert!(reg.get("nonexistent").is_none());
+    }
+
+    #[test]
+    fn list_names() {
+        let reg = ToolRegistry::new();
+        reg.register(DummyTool);
+
+        let names = reg.names();
+        assert!(names.contains(&"dummy".to_string()));
+    }
+
+    #[test]
+    fn definitions() {
+        let reg = ToolRegistry::new();
+        reg.register(DummyTool);
+
+        let defs = reg.definitions();
+        assert_eq!(defs.len(), 1);
+        assert_eq!(defs[0].name, "dummy");
+    }
+
+    #[test]
+    fn retain_whitelist() {
+        let reg = ToolRegistry::new();
+        reg.register(DummyTool);
+
+        // Retain only nonexistent — removes all
+        reg.retain(|name| name == "nonexistent");
+        assert!(reg.get("dummy").is_none());
+        assert!(reg.names().is_empty());
+    }
+
+    #[test]
+    fn retain_keeps_matching() {
+        let reg = ToolRegistry::new();
+        reg.register(DummyTool);
+
+        reg.retain(|name| name == "dummy");
+        assert!(reg.get("dummy").is_some());
+    }
+
+    #[test]
+    fn clone_for_agent() {
+        let reg = ToolRegistry::new();
+        reg.register(DummyTool);
+
+        let clone = reg.clone_for_agent();
+        assert!(clone.get("dummy").is_some());
+        // Both independent
+        assert!(reg.get("dummy").is_some());
+    }
+}

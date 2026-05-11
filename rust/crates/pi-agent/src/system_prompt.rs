@@ -167,3 +167,58 @@ impl Default for SystemPromptBuilder {
         Self::new(".")
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[test]
+    fn basic_prompt_contains_tool_guide() {
+        let builder = SystemPromptBuilder::new("/tmp").with_tool_guides();
+        let prompt = builder.build();
+        assert!(prompt.contains("read"));
+        assert!(prompt.contains("bash"));
+        assert!(prompt.contains("edit"));
+    }
+
+    #[test]
+    fn custom_prompt_override() {
+        let builder = SystemPromptBuilder::new("/tmp")
+            .with_custom_prompt("You are a test assistant.");
+        let prompt = builder.build();
+        assert!(prompt.contains("test assistant"));
+    }
+
+    #[test]
+    fn append_prompt() {
+        let builder = SystemPromptBuilder::new("/tmp")
+            .append("Extra instructions here.");
+        let prompt = builder.build();
+        assert!(prompt.contains("Extra instructions"));
+    }
+
+    #[test]
+    fn project_prompt_from_file() {
+        let dir = TempDir::new().unwrap();
+        let piso_dir = dir.path().join(".piso");
+        fs::create_dir_all(&piso_dir).unwrap();
+        fs::write(piso_dir.join("system.md"), "Project-specific instructions").unwrap();
+
+        let builder = SystemPromptBuilder::new(dir.path().to_string_lossy())
+            .with_project_prompt(&dir.path().to_string_lossy());
+        let prompt = builder.build();
+        assert!(prompt.contains("Project-specific instructions"));
+    }
+
+    #[test]
+    fn no_project_prompt_when_missing() {
+        let dir = TempDir::new().unwrap();
+        let builder = SystemPromptBuilder::new(dir.path().to_string_lossy())
+            .with_project_prompt(&dir.path().to_string_lossy());
+        let prompt = builder.build();
+        // Should not contain anything from .piso/system.md (doesn't exist)
+        assert!(!prompt.contains("Project-specific"));
+    }
+}

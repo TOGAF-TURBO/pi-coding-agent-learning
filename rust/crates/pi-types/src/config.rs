@@ -45,6 +45,7 @@ pub struct TerminalSettings {
 /// 全局设置。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
+#[derive(Default)]
 pub struct Settings {
     pub model: Option<String>,
     pub provider: Option<String>,
@@ -54,18 +55,6 @@ pub struct Settings {
     pub thinking_budgets: Option<ThinkingBudgets>,
 }
 
-impl Default for Settings {
-    fn default() -> Self {
-        Self {
-            model: None,
-            provider: None,
-            thinking: None,
-            compaction: CompactionSettings::default(),
-            terminal: TerminalSettings::default(),
-            thinking_budgets: None,
-        }
-    }
-}
 
 impl Default for CompactionSettings {
     fn default() -> Self {
@@ -82,5 +71,46 @@ impl Default for TerminalSettings {
             mouse_capture: false,
             bracketed_paste: true,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn default_settings() {
+        let s = Settings::default();
+        assert!(s.model.is_none());
+        assert!(s.provider.is_none());
+        assert!(s.compaction.enabled);
+    }
+
+    #[test]
+    fn settings_serialization_roundtrip() {
+        let s = Settings {
+            model: Some("claude-sonnet-4".to_string()),
+            provider: Some("anthropic".to_string()),
+            thinking: Some("high".to_string()),
+            ..Settings::default()
+        };
+        let json = serde_json::to_string(&s).unwrap();
+        let parsed: Settings = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.model, s.model);
+        assert_eq!(parsed.provider, s.provider);
+    }
+
+    #[test]
+    fn compaction_defaults() {
+        let c = CompactionSettings::default();
+        assert!(c.enabled);
+        assert_eq!(c.threshold, 100);
+    }
+
+    #[test]
+    fn terminal_defaults() {
+        let t = TerminalSettings::default();
+        assert!(!t.mouse_capture);
+        assert!(t.bracketed_paste);
     }
 }

@@ -153,3 +153,80 @@ pub enum Commands {
         shell: String,
     },
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use clap::Parser;
+
+    #[test]
+    fn parse_basic_prompt() {
+        let cli = Cli::try_parse_from(["piso", "hello", "world"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.messages, vec!["hello", "world"]);
+    }
+
+    #[test]
+    fn parse_provider_and_model() {
+        let cli = Cli::try_parse_from(["piso", "--provider", "glm", "--model", "glm-5.1", "-p", "test"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.provider.as_deref(), Some("glm"));
+        assert_eq!(cli.model.as_deref(), Some("glm-5.1"));
+        assert!(cli.print);
+    }
+
+    #[test]
+    fn parse_flags() {
+        let cli = Cli::try_parse_from(["piso", "--no-tools", "--no-session", "--offline", "--verbose"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert!(cli.no_tools);
+        assert!(cli.no_session);
+        assert!(cli.offline);
+        assert!(cli.verbose);
+    }
+
+    #[test]
+    fn parse_tools_whitelist() {
+        let cli = Cli::try_parse_from(["piso", "--tools", "read,grep,find"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.tools.as_deref(), Some("read,grep,find"));
+    }
+
+    #[test]
+    fn parse_models_filter() {
+        let cli = Cli::try_parse_from(["piso", "--models", "claude-*,gpt-*"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.models.as_deref(), Some("claude-*,gpt-*"));
+    }
+
+    #[test]
+    fn parse_session_dir() {
+        let cli = Cli::try_parse_from(["piso", "--session-dir", "/tmp/my-sessions"]);
+        assert!(cli.is_ok());
+        let cli = cli.unwrap();
+        assert_eq!(cli.session_dir.as_deref(), Some("/tmp/my-sessions"));
+    }
+
+    #[test]
+    fn parse_continue_and_resume() {
+        let cli = Cli::try_parse_from(["piso", "--continue"]);
+        assert!(cli.is_ok());
+        assert!(cli.unwrap().r#continue);
+
+        let cli = Cli::try_parse_from(["piso", "--resume"]);
+        assert!(cli.is_ok());
+        assert!(cli.unwrap().resume);
+    }
+
+    #[test]
+    fn parse_completions_subcommand() {
+        let cli = Cli::try_parse_from(["piso", "completions", "bash"]);
+        assert!(cli.is_ok());
+        // subcommands are not directly in Cli, they need a top-level parser
+    }
+}

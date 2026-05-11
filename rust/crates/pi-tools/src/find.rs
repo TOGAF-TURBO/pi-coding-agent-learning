@@ -116,3 +116,52 @@ impl ToolExecutor for FindTool {
         })
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use async_trait::async_trait;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[tokio::test]
+    async fn find_by_name() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("target.txt"), "content").unwrap();
+        fs::write(dir.path().join("other.rs"), "fn main(){}").unwrap();
+
+        let tool = FindTool::new(dir.path().to_string_lossy());
+        let result = tool.execute(serde_json::json!({
+            "pattern": "target.txt"
+        })).await.unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.output.contains("target.txt"));
+    }
+
+    #[tokio::test]
+    async fn find_glob_pattern() {
+        let dir = TempDir::new().unwrap();
+        let src = dir.path().join("src");
+        fs::create_dir_all(&src).unwrap();
+        fs::write(src.join("main.rs"), "").unwrap();
+        fs::write(src.join("lib.rs"), "").unwrap();
+        fs::write(dir.path().join("test.txt"), "").unwrap();
+
+        let tool = FindTool::new(dir.path().to_string_lossy());
+        // Use explicit file name pattern
+        let result = tool.execute(serde_json::json!({
+            "pattern": "**/main.rs"
+        })).await.unwrap();
+
+        assert!(!result.is_error, "Error: {}", result.output);
+        assert!(result.output.contains("main.rs"), "Output: {}", result.output);
+    }
+
+    #[test]
+    fn tool_definition() {
+        let tool = FindTool::new("/tmp");
+        let def = tool.definition();
+        assert_eq!(def.name, "find");
+    }
+}

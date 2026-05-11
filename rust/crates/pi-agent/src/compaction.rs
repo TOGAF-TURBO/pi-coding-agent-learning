@@ -70,7 +70,7 @@ pub async fn compact(
         system_prompt: Some(SUMMARIZE_PROMPT.to_string()),
         messages: vec![Message::User(pi_types::message::UserMessage {
             role: "user".to_string(),
-            content: vec![ContentBlock::text(&format!(
+            content: vec![ContentBlock::text(format!(
                 "Summarize this conversation:\n\n{}",
                 conversation_text
             ))],
@@ -144,4 +144,69 @@ fn serialize_entries(entries: &[&SessionEntry]) -> String {
         }
     }
     out
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_not_compact_small_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = create_test_session(&dir, 5);
+        assert!(!should_compact(&session));
+    }
+
+    #[test]
+    fn should_compact_large_session() {
+        let dir = tempfile::tempdir().unwrap();
+        let session = create_test_session(&dir, MAX_ENTRIES + 10);
+        assert!(should_compact(&session));
+    }
+
+    #[test]
+    fn serialize_entries_format() {
+        let entries = vec![
+            pi_types::session::SessionEntry::Message(pi_types::session::MessageEntry {
+                entry_type: "message".to_string(),
+                id: "1".to_string(),
+                parent_id: None,
+                timestamp: "2025-01-01T00:00:00Z".to_string(),
+                role: "user".to_string(),
+                content: serde_json::json!([{ "type": "text", "text": "hello" }]),
+                model: None,
+                        stop_reason: None,
+                        usage: None,
+            }),
+        ];
+        let refs: Vec<&pi_types::session::SessionEntry> = entries.iter().collect();
+        let result = serialize_entries(&refs);
+        assert!(result.contains("user"));
+        assert!(result.contains("hello"));
+    }
+
+    fn create_test_session(dir: &tempfile::TempDir, count: usize) -> JsonlSession {
+        let path = dir.path().join("test.jsonl");
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            let mut session = JsonlSession::create(&path, "/test").await.unwrap();
+            for i in 0..count {
+                let entry = pi_types::session::SessionEntry::Message(
+                    pi_types::session::MessageEntry {
+                        entry_type: "message".to_string(),
+                        id: format!("{}", i),
+                        parent_id: None,
+                        timestamp: "2025-01-01T00:00:00Z".to_string(),
+                        role: if i % 2 == 0 { "user" } else { "assistant" }.to_string(),
+                        content: serde_json::json!([{ "type": "text", "text": format!("Message {}", i) }]),
+                        model: None,
+                        stop_reason: None,
+                        usage: None,
+                    },
+                );
+                session.append(entry).await.unwrap();
+            }
+            session
+        })
+    }
 }

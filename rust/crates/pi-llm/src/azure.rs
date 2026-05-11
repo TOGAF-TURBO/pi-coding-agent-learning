@@ -109,3 +109,31 @@ impl LlmDriver for AzureOpenAiDriver {
         Ok(Box::pin(stream))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn driver_name() {
+        let driver = AzureOpenAiDriver::new();
+        assert_eq!(driver.name(), "azure-openai");
+    }
+
+    #[test]
+    fn build_url_format() {
+        let url = AzureOpenAiDriver::build_url(
+            "https://myresource.openai.azure.com",
+            "gpt-4o-deployment",
+        );
+        assert!(url.contains("myresource.openai.azure.com"));
+        assert!(url.contains("gpt-4o-deployment"));
+        assert!(url.contains("api-version=2024-02-15-preview"));
+    }
+
+    #[test]
+    fn default_impl() {
+        let driver = AzureOpenAiDriver::default();
+        assert_eq!(driver.name(), "azure-openai");
+    }
+}

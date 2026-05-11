@@ -175,3 +175,45 @@ fn grep_file(
 
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[tokio::test]
+    async fn grep_finds_match() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("test.txt"), "hello world\nfoo bar\nhello rust").unwrap();
+
+        let tool = GrepTool::new(dir.path().to_string_lossy());
+        let result = tool.execute(serde_json::json!({
+            "pattern": "hello"
+        })).await.unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.output.contains("hello"));
+    }
+
+    #[tokio::test]
+    async fn grep_no_match() {
+        let dir = TempDir::new().unwrap();
+        fs::write(dir.path().join("test.txt"), "no match here").unwrap();
+
+        let tool = GrepTool::new(dir.path().to_string_lossy());
+        let result = tool.execute(serde_json::json!({
+            "pattern": "NONEXISTENT_PATTERN_XYZ"
+        })).await.unwrap();
+
+        assert!(!result.is_error);
+        assert!(result.output.contains("0 matches") || result.output.is_empty() || result.output.contains("0"));
+    }
+
+    #[test]
+    fn tool_definition() {
+        let tool = GrepTool::new("/tmp");
+        let def = tool.definition();
+        assert_eq!(def.name, "grep");
+    }
+}

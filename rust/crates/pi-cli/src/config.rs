@@ -117,3 +117,76 @@ pub fn skills_dir() -> Option<PathBuf> {
 pub fn project_skills_dir(project_dir: &Path) -> PathBuf {
     project_dir.join(CONFIG_DIR_NAME).join("skills")
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[test]
+    fn default_config() {
+        let config = Config::default();
+        assert!(config.model.is_none());
+        assert!(config.provider.is_none());
+        assert_eq!(config.max_tokens, 16384);
+        assert!(config.session_dir.is_none());
+    }
+
+    #[test]
+    fn load_config_merges_files() {
+        let dir = TempDir::new().unwrap();
+        let piso_dir = dir.path().join(".piso");
+        fs::create_dir_all(&piso_dir).unwrap();
+        fs::write(
+            piso_dir.join("settings.json"),
+            r#"{"model":"glm-5.1","provider":"glm","max_tokens":8192}"#,
+        ).unwrap();
+
+        let config = load_config(Some(dir.path()));
+        assert_eq!(config.model.as_deref(), Some("glm-5.1"));
+        assert_eq!(config.provider.as_deref(), Some("glm"));
+    }
+
+    #[test]
+    fn session_dir_encoding() {
+        let config = Config::default();
+        let cwd = Path::new("/home/user/my-project");
+        let dir = session_dir_for_cwd(&config, cwd);
+        let dir_str = dir.to_string_lossy();
+        assert!(dir_str.contains("--home-user-my-project--"));
+    }
+
+    #[test]
+    fn session_dir_custom_override() {
+        let config = Config {
+            session_dir: Some("/custom/sessions".to_string()),
+            ..Config::default()
+        };
+        let cwd = Path::new("/home/user/project");
+        let dir = session_dir_for_cwd(&config, cwd);
+        assert_eq!(dir, PathBuf::from("/custom/sessions"));
+    }
+
+    #[test]
+    fn project_skills_dir_path() {
+        let dir = project_skills_dir(Path::new("/project"));
+        assert_eq!(dir, PathBuf::from("/project/.piso/skills"));
+    }
+
+    #[test]
+    fn config_serialization_roundtrip() {
+        let config = Config {
+            model: Some("claude-sonnet-4".to_string()),
+            provider: Some("anthropic".to_string()),
+            thinking: Some("high".to_string()),
+            max_tokens: 32768,
+            session_dir: None,
+        };
+        let json = serde_json::to_string(&config).unwrap();
+        let parsed: Config = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed.model, config.model);
+        assert_eq!(parsed.provider, config.provider);
+        assert_eq!(parsed.max_tokens, config.max_tokens);
+    }
+}

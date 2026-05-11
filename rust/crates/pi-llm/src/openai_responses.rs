@@ -152,3 +152,20 @@ impl LlmDriver for OpenAiResponsesDriver {
         Ok(Box::pin(stream))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn driver_name() {
+        let driver = OpenAiResponsesDriver::new();
+        assert_eq!(driver.name(), "openai-responses");
+    }
+
+    #[test]
+    fn default_impl() {
+        let driver = OpenAiResponsesDriver::default();
+        assert_eq!(driver.name(), "openai-responses");
+    }
+}
