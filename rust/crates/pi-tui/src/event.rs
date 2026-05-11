@@ -14,6 +14,8 @@ pub enum Event {
     Resize(u16, u16),
     /// 定时器 tick（用于状态栏刷新等）。
     Tick,
+    /// 显示 diff 查看器。
+    ShowDiff(String),
 }
 
 /// 聚焦区域 — 五区布局中哪个区域获得焦点。

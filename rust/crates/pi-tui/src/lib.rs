@@ -1,6 +1,7 @@
 pub mod app;
 pub mod complete;
 pub mod components;
+pub mod diff_viewer;
 pub mod engine;
 pub mod event;
 pub mod eventbus;

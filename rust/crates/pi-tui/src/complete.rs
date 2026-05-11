@@ -26,6 +26,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/cost", "Show estimated cost"),
     ("/usage", "Show token usage and cost"),
     ("/sessions", "List recent sessions"),
+    ("/diff", "Open diff viewer"),
     ("/find", "Search across sessions"),
     ("/grep", "Search current session"),
     ("/new", "Start new session"),

@@ -52,6 +52,8 @@ pub enum SlashCommand {
     Clone,
     /// 打开会话选择器。
     Sessions,
+    /// 打开 diff 查看器。
+    Diff,
     /// 退出。
     Quit,
     /// 未知命令。
@@ -91,6 +93,7 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "import" | "i" => SlashCommand::Import(arg.unwrap_or_default()),
         "clone" => SlashCommand::Clone,
         "sessions" | "s" => SlashCommand::Sessions,
+        "diff" | "d" => SlashCommand::Diff,
         "quit" | "q" | "exit" => SlashCommand::Quit,
         _ => SlashCommand::Unknown(cmd.to_string()),
     })
@@ -119,6 +122,7 @@ pub fn help_text() -> String {
         "  /import, /i <path>  Import JSONL session file",
         "  /clone              Duplicate current session",
         "  /sessions, /s       Open session picker",
+        "  /diff, /d           Open diff viewer",
         "  /quit, /q           Quit piso",
     ]
     .join("\n")

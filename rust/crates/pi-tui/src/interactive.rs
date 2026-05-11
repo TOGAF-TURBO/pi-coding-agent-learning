@@ -58,6 +58,8 @@ enum Command {
     Import { path: String },
     /// 克隆当前会话。
     CloneSession,
+    /// 打开 diff 查看器。
+    ShowDiff { diff_text: String },
 }
 
 /// 交互模式配置。
@@ -147,6 +149,11 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let agent_state = state.clone();
     let agent_abort = abort_flag.clone();
     let agent_ctx = ctx.clone();
+
+    // 共享的 diff viewer 状态
+    let diff_viewer_shared: Arc<std::sync::RwLock<Option<crate::diff_viewer::DiffViewer>>> =
+        Arc::new(std::sync::RwLock::new(None));
+    let diff_viewer_in_spawn = diff_viewer_shared.clone();
     let agent_handle = tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
@@ -273,6 +280,10 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                         count
                     ));
                 }
+                Command::ShowDiff { diff_text } => {
+                    let viewer = crate::diff_viewer::DiffViewer::from_unified_diff(&diff_text);
+                    *diff_viewer_in_spawn.write().unwrap() = Some(viewer);
+                }
             }
         }
     });
@@ -303,6 +314,9 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let mut overlay: Option<selector::Selector> = None;
     let mut overlay_kind: Option<OverlayKind> = None;
 
+    // Diff 查看器
+    // (shared state is diff_viewer_shared)
+
     loop {
         let hints = keybindings.footer_hints(!matches!(state.agent_state(), AgentState::Idle));
         engine.terminal().draw(|f| {
@@ -328,6 +342,21 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 let y = (size.height.saturating_sub(h)) / 2;
                 let sel_area = ratatui::layout::Rect::new(x, y, w, h);
                 selector::Selector::render(f, sel_area, sel);
+            }
+
+            // 渲染 diff 查看器（如果有）
+            {
+                let guard = diff_viewer_shared.read().unwrap();
+                if let Some(ref viewer) = *guard {
+                    if viewer.is_visible() {
+                        let w = (size.width as f32 * 0.8) as u16;
+                        let h = (size.height as f32 * 0.8) as u16;
+                        let x = (size.width.saturating_sub(w)) / 2;
+                        let y = (size.height.saturating_sub(h)) / 2;
+                        let diff_area = ratatui::layout::Rect::new(x, y, w, h);
+                        viewer.render(f, diff_area);
+                    }
+                }
             }
         })?;
 
@@ -396,6 +425,26 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 }
             }
             continue;
+        }
+
+        // Diff 查看器模式：拦截所有输入
+        {
+            let mut guard = diff_viewer_shared.write().unwrap();
+            if let Some(ref mut viewer) = *guard {
+                if viewer.is_visible() {
+                    if let Event::Key(key) = event {
+                        match key.code {
+                            KeyCode::Char('j') | KeyCode::Down => viewer.scroll_down(3),
+                            KeyCode::Char('k') | KeyCode::Up => viewer.scroll_up(3),
+                            KeyCode::Char('n') | KeyCode::Right => viewer.next_file(),
+                            KeyCode::Char('p') | KeyCode::Left => viewer.prev_file(),
+                            KeyCode::Char('q') | KeyCode::Esc => viewer.hide(),
+                            _ => {}
+                        }
+                    }
+                    continue;
+                }
+            }
         }
 
         // 正常模式
@@ -544,6 +593,9 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
             }
             Event::Tick => {
                 tick = tick.wrapping_add(1);
+            }
+            Event::ShowDiff(_text) => {
+                // Handled via shared state, not events
             }
         }
     }
@@ -1102,10 +1154,29 @@ async fn handle_slash_command(
             }
         }
         SlashCommand::Quit => {
-            // 发送一个特殊信号 — 通过直接退出循环处理
-            // 实际上这里无法直接 break，所以用 Abort 作为信号
-            // 改为：推送提示并让用户用 Ctrl+C 退出
             state.push_system("Use Ctrl+C to quit.");
+        }
+        SlashCommand::Diff => {
+            // 从最近工具调用收集 diff
+            let entries = state.entries.read();
+            let mut diff_lines = Vec::new();
+            for entry in entries.iter() {
+                if matches!(entry.role, crate::app::ChatRole::Tool { .. }) {
+                    if entry.content.contains("diff --git")
+                        || entry.content.contains("--- a/")
+                    {
+                        diff_lines.push(entry.content.clone());
+                    }
+                }
+            }
+            drop(entries);
+            if diff_lines.is_empty() {
+                state.push_system("No diffs found in current session.");
+            } else {
+                let _ = cmd_tx.send(Command::ShowDiff {
+                    diff_text: diff_lines.join("\n"),
+                });
+            }
         }
         SlashCommand::Unknown(cmd) => {
             state.push_system(&format!(
