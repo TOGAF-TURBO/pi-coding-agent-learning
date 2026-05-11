@@ -67,6 +67,12 @@ pub struct OpenAiDriver {
     client: Client,
 }
 
+impl Default for OpenAiDriver {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl OpenAiDriver {
     pub fn new() -> Self {
         Self {
@@ -200,7 +206,7 @@ impl LlmDriver for OpenAiDriver {
 }
 
 /// 解析 SSE chunk，只返回 text/thinking/usage/stop 事件（不含 tool call）。
-fn parse_openai_events(chunk: &Value) -> Option<Vec<StreamEvent>> {
+pub fn parse_openai_events(chunk: &Value) -> Option<Vec<StreamEvent>> {
     let mut events = Vec::new();
 
     let choices = chunk.get("choices")?.as_array()?;
@@ -258,7 +264,7 @@ fn parse_openai_events(chunk: &Value) -> Option<Vec<StreamEvent>> {
 }
 
 /// 构建 OpenAI Chat Completions API 请求体。
-fn build_openai_request(req: &CompletionRequest) -> Value {
+pub fn build_openai_request(req: &CompletionRequest) -> Value {
     let mut messages = Vec::new();
 
     // 系统提示

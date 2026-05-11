@@ -106,6 +106,47 @@ pub trait ExtensionApi {
 
     /// 获取扩展存储（持久化键值对）。
     fn store(&self) -> &ExtensionStore;
+
+    // ========================================================================
+    // 高级 API (#21)
+    // ========================================================================
+
+    /// 注册自定义 LLM provider。
+    /// provider_id: 唯一标识符 (e.g. "my-proxy")
+    /// base_url: API endpoint
+    /// api_key: 认证密钥
+    /// api_type: 协议类型 (e.g. "openai-completions", "anthropic-messages")
+    fn register_provider(
+        &mut self,
+        provider_id: &str,
+        base_url: &str,
+        api_key: &str,
+        api_type: &str,
+        models: Vec<ProviderModelInfo>,
+    );
+
+    /// 注册快捷键。
+    /// key: 快捷键描述 (e.g. "ctrl+alt+p")
+    /// description: 功能描述
+    /// handler: 回调
+    fn register_shortcut(
+        &mut self,
+        key: &str,
+        description: &str,
+        handler: Box<dyn Fn() + Send + Sync>,
+    );
+
+    /// 注入消息到会话。
+    fn send_message(&mut self, content: &str);
+
+    /// 注入用户消息到会话。
+    fn send_user_message(&mut self, content: &str);
+
+    /// 设置会话显示名。
+    fn set_session_name(&mut self, name: &str);
+
+    /// 设置标签（用于分类）。
+    fn set_label(&mut self, key: &str, value: &str);
 }
 
 /// 扩展持久化存储。
@@ -157,6 +198,11 @@ pub struct HookRegistry {
     pub commands: Vec<CommandEntry>,
     pub message_renderers: Vec<Box<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
     pub editor_hints: Vec<Box<dyn Fn() -> String + Send + Sync>>,
+    pub providers: Vec<ProviderEntry>,
+    pub shortcuts: Vec<ShortcutEntry>,
+    pub pending_messages: Vec<(String, String)>, // (role, content)
+    pub session_name: Option<String>,
+    pub labels: Vec<(String, String)>,
 }
 
 /// 注册的工具条目。
@@ -171,6 +217,30 @@ pub struct CommandEntry {
     pub name: String,
     pub description: String,
     pub handler: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
+}
+
+/// Provider 模型信息。
+#[derive(Debug, Clone)]
+pub struct ProviderModelInfo {
+    pub id: String,
+    pub name: String,
+    pub context_window: Option<usize>,
+}
+
+/// 注册的 provider 条目。
+pub struct ProviderEntry {
+    pub provider_id: String,
+    pub base_url: String,
+    pub api_key: String,
+    pub api_type: String,
+    pub models: Vec<ProviderModelInfo>,
+}
+
+/// 注册的快捷键条目。
+pub struct ShortcutEntry {
+    pub key: String,
+    pub description: String,
+    pub handler: Box<dyn Fn() + Send + Sync>,
 }
 
 /// 基础 ExtensionApi 实现。
@@ -310,6 +380,52 @@ impl ExtensionApi for BasicExtensionApi {
 
     fn store(&self) -> &ExtensionStore {
         &self.store
+    }
+
+    fn register_provider(
+        &mut self,
+        provider_id: &str,
+        base_url: &str,
+        api_key: &str,
+        api_type: &str,
+        models: Vec<ProviderModelInfo>,
+    ) {
+        self.hooks.providers.push(ProviderEntry {
+            provider_id: provider_id.to_string(),
+            base_url: base_url.to_string(),
+            api_key: api_key.to_string(),
+            api_type: api_type.to_string(),
+            models,
+        });
+    }
+
+    fn register_shortcut(
+        &mut self,
+        key: &str,
+        description: &str,
+        handler: Box<dyn Fn() + Send + Sync>,
+    ) {
+        self.hooks.shortcuts.push(ShortcutEntry {
+            key: key.to_string(),
+            description: description.to_string(),
+            handler,
+        });
+    }
+
+    fn send_message(&mut self, content: &str) {
+        self.hooks.pending_messages.push(("assistant".to_string(), content.to_string()));
+    }
+
+    fn send_user_message(&mut self, content: &str) {
+        self.hooks.pending_messages.push(("user".to_string(), content.to_string()));
+    }
+
+    fn set_session_name(&mut self, name: &str) {
+        self.hooks.session_name = Some(name.to_string());
+    }
+
+    fn set_label(&mut self, key: &str, value: &str) {
+        self.hooks.labels.push((key.to_string(), value.to_string()));
     }
 }
 

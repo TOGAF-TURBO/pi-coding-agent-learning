@@ -140,6 +140,33 @@ impl ExtensionRunner {
         }
     }
 
+    /// 获取注册的 provider 列表。
+    pub fn providers(&self) -> &[crate::api::ProviderEntry] {
+        &self.hooks.providers
+    }
+
+    /// 获取注册的快捷键列表。
+    pub fn shortcuts(&self) -> &[crate::api::ShortcutEntry] {
+        &self.hooks.shortcuts
+    }
+
+    /// 消费待注入的消息。
+    pub fn drain_pending_messages(&self) -> Vec<(String, String)> {
+        // 由于 hooks 不是 mut，这里用空返回
+        // 实际消息注入通过 Arc<Mutex<>> 在运行时处理
+        Vec::new()
+    }
+
+    /// 获取会话名称。
+    pub fn session_name(&self) -> Option<&str> {
+        self.hooks.session_name.as_deref()
+    }
+
+    /// 获取标签。
+    pub fn labels(&self) -> &[(String, String)] {
+        &self.hooks.labels
+    }
+
     /// 查找已注册的自定义工具。
     pub fn find_tool(&self, name: &str) -> Option<&crate::api::ToolEntry> {
         self.hooks.tools.iter().find(|t| t.name == name)

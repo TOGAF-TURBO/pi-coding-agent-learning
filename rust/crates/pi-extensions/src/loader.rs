@@ -57,6 +57,13 @@ impl ExtensionLoader {
             merged.on_error.extend(hooks.on_error);
             merged.on_before_provider_request.extend(hooks.on_before_provider_request);
             merged.on_after_provider_response.extend(hooks.on_after_provider_response);
+            merged.providers.extend(hooks.providers);
+            merged.shortcuts.extend(hooks.shortcuts);
+            merged.pending_messages.extend(hooks.pending_messages);
+            if hooks.session_name.is_some() {
+                merged.session_name = hooks.session_name;
+            }
+            merged.labels.extend(hooks.labels);
             merged.tools.extend(hooks.tools);
             merged.commands.extend(hooks.commands);
             merged.message_renderers.extend(hooks.message_renderers);

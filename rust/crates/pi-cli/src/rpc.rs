@@ -617,8 +617,17 @@ async fn emit<W: AsyncWriteExt + Unpin>(writer: &mut W, event: &RpcEvent) -> Res
 /// 创建 LLM driver。
 fn make_driver(api_type: &str) -> Box<dyn LlmDriver> {
     match api_type {
-        "openai-completions" | "openai-responses" => {
+        "openai-completions" => {
             Box::new(pi_llm::openai::OpenAiDriver::new())
+        }
+        "openai-responses" => {
+            Box::new(pi_llm::openai_responses::OpenAiResponsesDriver::new())
+        }
+        "azure-openai" => {
+            Box::new(pi_llm::azure::AzureOpenAiDriver::new())
+        }
+        "amazon-bedrock" | "bedrock" => {
+            Box::new(pi_llm::bedrock::BedrockDriver::new())
         }
         "google-gemini" | "gemini" => {
             Box::new(pi_llm::gemini::GeminiDriver::new())

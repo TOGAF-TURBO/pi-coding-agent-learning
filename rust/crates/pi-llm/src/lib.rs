@@ -9,6 +9,9 @@ pub mod registry;
 pub mod providers;
 pub mod openai;
 pub mod gemini;
+pub mod azure;
+pub mod bedrock;
+pub mod openai_responses;
 
 pub use driver::{CompletionRequest, LlmDriver, StreamEvent};
 pub use registry::ProviderRegistry;
