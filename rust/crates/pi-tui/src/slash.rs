@@ -105,7 +105,7 @@ pub fn help_text() -> String {
         "  /compact, /compress Compact context (summarize old messages)",
         "  /model, /m [name]   Switch model (no arg = open picker)",
         "  /branch, /b         Show branch info",
-        "  /export, /e [path]  Export session to HTML",
+        "  /export, /e [path]  Export session (HTML or JSONL based on extension)",
         "  /usage, /u          Show token usage stats",
         "  /cost, /c           Show estimated API cost",
         "  /find, /f <term>    Search across sessions",

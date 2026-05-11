@@ -53,6 +53,8 @@ pub struct AgentLoop {
     stream_timeout_secs: u64,
     /// 最大重试次数。
     max_retries: usize,
+    /// 文件写入互斥锁 — 序列化 write/edit 工具调用。
+    file_write_lock: Arc<tokio::sync::Mutex<()>>,
 }
 
 /// Agent 循环输出 — 收集的最终响应。
@@ -115,6 +117,7 @@ impl AgentLoop {
             usage: TokenUsage::default(),
             stream_timeout_secs: 120,
             max_retries: 3,
+            file_write_lock: Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 
@@ -513,7 +516,20 @@ impl AgentLoop {
     }
 
     /// 执行单个工具调用。
+    /// 文件写入工具（write/edit）通过互斥锁序列化，避免并发竞争。
     async fn execute_tool(&self, name: &str, input: serde_json::Value) -> Result<ToolResult> {
+        let is_file_write = matches!(name, "write" | "edit");
+
+        if is_file_write {
+            let _guard = self.file_write_lock.lock().await;
+            self.execute_tool_inner(name, input).await
+        } else {
+            self.execute_tool_inner(name, input).await
+        }
+    }
+
+    /// 实际执行工具逻辑。
+    async fn execute_tool_inner(&self, name: &str, input: serde_json::Value) -> Result<ToolResult> {
         match self.tools.get(name) {
             Some(executor) => executor
                 .execute(input)

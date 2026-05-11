@@ -846,10 +846,24 @@ async fn run_export(cli: &Cli, output_path: &str) -> Result<()> {
     };
     let session = mgr.open(&session_id).await?;
 
-    let html = render_session_html(&session);
-    std::fs::write(output_path, &html)
-        .context(format!("Failed to write HTML to {}", output_path))?;
-    eprintln!("Exported session to {}", output_path);
+    if output_path.ends_with(".jsonl") {
+        // JSONL 导出：直接序列化每条记录
+        let mut jsonl = String::new();
+        for entry in session.entries() {
+            if let Ok(line) = serde_json::to_string(entry) {
+                jsonl.push_str(&line);
+                jsonl.push('\n');
+            }
+        }
+        std::fs::write(output_path, &jsonl)
+            .context(format!("Failed to write JSONL to {}", output_path))?;
+        eprintln!("Exported session as JSONL to {}", output_path);
+    } else {
+        let html = render_session_html(&session);
+        std::fs::write(output_path, &html)
+            .context(format!("Failed to write HTML to {}", output_path))?;
+        eprintln!("Exported session as HTML to {}", output_path);
+    }
     Ok(())
 }
 

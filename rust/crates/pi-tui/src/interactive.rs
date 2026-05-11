@@ -19,6 +19,7 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use anyhow::Result;
+use serde_json::json;
 use crossterm::event::KeyCode;
 use pi_agent::loop_engine::{AgentLoop, StreamSink};
 use pi_llm::driver::LlmDriver;
@@ -171,14 +172,35 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     agent_abort.store(true, Ordering::SeqCst);
                 }
                 Command::Export { path } => {
-                    // 导出当前 session 为 HTML
+                    // 根据文件扩展名选择导出格式
                     let entries = agent_state.entries.read();
-                    let html = render_session_html_simple(&entries);
-                    drop(entries);
-                    if let Err(e) = std::fs::write(&path, html) {
-                        agent_state.push_system(&format!("Export failed: {e}"));
+                    if path.ends_with(".jsonl") {
+                        let mut jsonl = String::new();
+                        for entry in entries.iter() {
+                            // 手动构建 JSON 行（ChatEntry 不 derive Serialize）
+                            let mut obj = serde_json::Map::new();
+                            obj.insert("role".to_string(), json!(format!("{:?}", entry.role)));
+                            obj.insert("content".to_string(), json!(entry.content));
+                            obj.insert("streaming".to_string(), json!(entry.streaming));
+                            if let Ok(line) = serde_json::to_string(&obj) {
+                                jsonl.push_str(&line);
+                                jsonl.push('\n');
+                            }
+                        }
+                        drop(entries);
+                        if let Err(e) = std::fs::write(&path, jsonl) {
+                            agent_state.push_system(&format!("Export failed: {e}"));
+                        } else {
+                            agent_state.push_system(&format!("Exported JSONL to {}", path));
+                        }
                     } else {
-                        agent_state.push_system(&format!("Exported to {}", path));
+                        let html = render_session_html_simple(&entries);
+                        drop(entries);
+                        if let Err(e) = std::fs::write(&path, html) {
+                            agent_state.push_system(&format!("Export failed: {e}"));
+                        } else {
+                            agent_state.push_system(&format!("Exported HTML to {}", path));
+                        }
                     }
                 }
                 Command::Compact => {

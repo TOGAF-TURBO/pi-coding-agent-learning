@@ -34,7 +34,7 @@ const SLASH_COMMANDS: &[(&str, &str)] = &[
     ("/fork", "Fork session at message"),
     ("/session", "Show session info"),
     ("/name", "Set session name"),
-    ("/export", "Export session to HTML"),
+    ("/export", "Export session (HTML or JSONL)"),
 ];
 
 /// 从输入文本和光标位置尝试补全。

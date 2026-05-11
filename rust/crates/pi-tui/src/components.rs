@@ -14,7 +14,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{AgentState, AppState, ChatRole};
 use crate::layout::LayoutRegions;
-use crate::markdown::render_markdown;
+use crate::markdown::render_markdown_truncated;
 
 /// 工具结果最大显示行数。
 const MAX_TOOL_LINES: usize = 8;
@@ -140,7 +140,7 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
             ChatRole::Assistant => {
                 // 助手消息：无背景色，Markdown 渲染
                 let content_style = Style::default();
-                let md_lines = render_markdown(&entry.content, content_style);
+                let (md_lines, _truncated) = render_markdown_truncated(&entry.content, content_style);
                 for md_line in md_lines {
                     let mut spans: Vec<Span<'static>> = Vec::new();
                     for s in md_line.spans {

@@ -51,6 +51,46 @@ pub fn render_markdown(text: &str, base_style: Style) -> Vec<Line<'static>> {
     render_markdown_with_colors(text, base_style, &MdColors::default())
 }
 
+/// 默认截断阈值：300 行。
+const TRUNCATE_THRESHOLD: usize = 300;
+
+/// 截断后的折叠加行数。
+const TRUNCATE_FOLD_LINES: usize = 50;
+
+/// 将 Markdown 渲染为 Lines，超过阈值时截断中间部分。
+/// 返回 (lines, was_truncated)。
+pub fn render_markdown_truncated(
+    text: &str,
+    base_style: Style,
+) -> (Vec<Line<'static>>, bool) {
+    render_markdown_truncated_with_colors(text, base_style, &MdColors::default())
+}
+
+/// 带颜色的截断渲染。
+pub fn render_markdown_truncated_with_colors(
+    text: &str,
+    base_style: Style,
+    colors: &MdColors,
+) -> (Vec<Line<'static>>, bool) {
+    let lines = render_markdown_with_colors(text, base_style, colors);
+
+    if lines.len() <= TRUNCATE_THRESHOLD {
+        return (lines, false);
+    }
+
+    // 保留头部和尾部，中间插入截断标记
+    let head = TRUNCATE_FOLD_LINES;
+    let tail = TRUNCATE_FOLD_LINES;
+    let hidden = lines.len() - head - tail;
+    let mut truncated = lines[..head].to_vec();
+    truncated.push(Line::from(Span::styled(
+        format!("  ... {} lines truncated ...", hidden),
+        base_style.add_modifier(Modifier::DIM | Modifier::ITALIC),
+    )));
+    truncated.extend(lines[lines.len() - tail..].to_vec());
+    (truncated, true)
+}
+
 /// 将 Markdown 文本渲染为 ratatui Line 列表（带自定义颜色）。
 pub fn render_markdown_with_colors(
     text: &str,
