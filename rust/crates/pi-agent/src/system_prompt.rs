@@ -9,6 +9,7 @@
 /// 系统提示构建器。
 pub struct SystemPromptBuilder {
     cwd: String,
+    model_info: Option<String>,
     custom_prompt: Option<String>,
     append_prompts: Vec<String>,
     tool_guides: Vec<String>,
@@ -18,10 +19,20 @@ impl SystemPromptBuilder {
     pub fn new(cwd: impl Into<String>) -> Self {
         Self {
             cwd: cwd.into(),
+            model_info: None,
             custom_prompt: None,
             append_prompts: Vec::new(),
             tool_guides: Vec::new(),
         }
+    }
+
+    /// 设置模型信息（名称 + provider），注入 system prompt。
+    pub fn with_model_info(mut self, model_name: &str, provider: &str) -> Self {
+        self.model_info = Some(format!(
+            "You are {} served by {}.",
+            model_name, provider
+        ));
+        self
     }
 
     /// 覆盖默认系统提示。
@@ -67,6 +78,12 @@ impl SystemPromptBuilder {
             parts.push(custom.clone());
         } else {
             parts.push(default_role_prompt(&self.cwd));
+        }
+
+        // 1.5 模型身份（紧跟角色提示之后）
+        if let Some(info) = &self.model_info {
+            parts.push(String::new());
+            parts.push(info.clone());
         }
 
         // 2. 工具使用指南
@@ -216,6 +233,14 @@ mod tests {
             .with_project_prompt(&dir.path().to_string_lossy());
         let prompt = builder.build();
         assert!(prompt.contains("Project-specific instructions"));
+    }
+
+    #[test]
+    fn model_info_injected() {
+        let builder = SystemPromptBuilder::new("/tmp")
+            .with_model_info("glm-5.1", "zhipu");
+        let prompt = builder.build();
+        assert!(prompt.contains("You are glm-5.1 served by zhipu."));
     }
 
     #[test]

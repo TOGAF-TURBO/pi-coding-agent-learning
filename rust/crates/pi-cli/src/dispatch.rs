@@ -242,9 +242,14 @@ async fn run_print(cli: Cli) -> Result<()> {
     }
 
     // 创建 Agent 循环
+    let model_display = format!("{} ({})", &model, &provider);
     let mut agent = AgentLoop::new(session, driver, tools, model)
         .with_api_key(api_key)
-        .with_system_prompt(prompt_builder.build());
+        .with_system_prompt(
+            prompt_builder
+                .with_model_info(&model_display, &provider)
+                .build(),
+        );
 
     if let Some(url) = effective_base_url {
         agent = agent.with_base_url(url);
@@ -460,6 +465,12 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         .unwrap_or_else(|| cwd.join("keybindings.json"));
     let keybindings = pi_tui::KeyBindings::load(&kb_path);
 
+    let tui_system_prompt = {
+        let md = format!("{} ({})", &model, &provider);
+        prompt_builder
+            .with_model_info(&md, &provider)
+            .build()
+    };
     let tui_cfg = pi_tui::InteractiveConfig {
         model,
         provider,
@@ -468,7 +479,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         base_url: effective_base_url,
         cwd,
         session_dir,
-        system_prompt: prompt_builder.build(),
+        system_prompt: tui_system_prompt,
         session: Some(session),
         available_models,
         keybindings,
