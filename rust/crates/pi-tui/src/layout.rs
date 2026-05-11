@@ -74,3 +74,34 @@ impl LayoutRegions {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn five_regions_fit_in_24_rows() {
+        let area = Rect::new(0, 0, 80, 24);
+        let regions = calculate(area, 5);
+        assert_eq!(regions.header.height, 1);
+        assert_eq!(regions.status.height, 1);
+        assert_eq!(regions.editor.height, 5);
+        assert_eq!(regions.footer.height, 1);
+        // chat gets the rest
+        assert!(regions.chat.height >= 12);
+        // total must equal area height
+        let total = regions.header.height
+            + regions.chat.height
+            + regions.status.height
+            + regions.editor.height
+            + regions.footer.height;
+        assert_eq!(total, 24);
+    }
+
+    #[test]
+    fn editor_clamped_to_half_height() {
+        let area = Rect::new(0, 0, 80, 10);
+        let regions = calculate(area, 20); // request 20 but only 10 rows
+        assert!(regions.editor.height <= 5); // clamped to half
+    }
+}

@@ -29,7 +29,8 @@ pub fn render_header(f: &mut ratatui::Frame, area: Rect, model: &str, provider: 
 }
 
 /// 渲染 chat 区域。
-pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
+/// `scroll_offset` — 从底部向上的滚动偏移（0 = 底部，=n 向上 n 行）。
+pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_offset: usize) {
     let entries = state.entries.read();
     let mut lines: Vec<Line> = Vec::new();
 
@@ -94,7 +95,8 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
     // 滚动到底部
     let visible = area.height as usize;
     let total = lines.len();
-    let start = total.saturating_sub(visible);
+    let bottom = total; // bottom = latest
+    let start = bottom.saturating_sub(visible).saturating_sub(scroll_offset);
 
     let para = Paragraph::new(lines.into_iter().skip(start).collect::<Vec<_>>());
     f.render_widget(para, area);
@@ -178,14 +180,14 @@ pub fn render_footer(f: &mut ratatui::Frame, area: Rect) {
 }
 
 /// 渲染全部五个区域。
-pub fn render_all(f: &mut ratatui::Frame, regions: LayoutRegions, state: &AppState, input: &str) {
+pub fn render_all(f: &mut ratatui::Frame, regions: LayoutRegions, state: &AppState, input: &str, scroll_offset: usize) {
     let footer = state.footer.read();
     let model = footer.model.clone();
     let provider = footer.provider.clone();
     drop(footer);
 
     render_header(f, regions.header, &model, &provider);
-    render_chat(f, regions.chat, state);
+    render_chat(f, regions.chat, state, scroll_offset);
     render_status(f, regions.status, state);
     render_editor(f, regions.editor, input, true);
     render_footer(f, regions.footer);

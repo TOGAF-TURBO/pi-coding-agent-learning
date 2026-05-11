@@ -7,6 +7,10 @@ license.workspace = true
 
 [dependencies]
 pi-types = { path = "../pi-types" }
+pi-llm = { path = "../pi-llm" }
+pi-session = { path = "../pi-session" }
+pi-tools = { path = "../pi-tools" }
+pi-agent = { path = "../pi-agent" }
 tokio = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }
@@ -14,6 +18,5 @@ serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }
 tracing = { workspace = true }
-futures = { workspace = true }
 parking_lot = { workspace = true }
 anyhow = { workspace = true }

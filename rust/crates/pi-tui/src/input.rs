@@ -117,3 +117,53 @@ impl Default for InputEditor {
         Self::new()
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn insert_and_backspace() {
+        let mut ed = InputEditor::new();
+        ed.insert('h');
+        ed.insert('i');
+        assert_eq!(ed.text(), "hi");
+        ed.backspace();
+        assert_eq!(ed.text(), "h");
+    }
+
+    #[test]
+    fn cursor_movement() {
+        let mut ed = InputEditor::new();
+        ed.insert('a');
+        ed.insert('b');
+        ed.insert('c');
+        assert_eq!(ed.cursor(), 3);
+        ed.move_left();
+        assert_eq!(ed.cursor(), 2);
+        ed.backspace();
+        assert_eq!(ed.text(), "ac");
+        ed.move_end();
+        assert_eq!(ed.cursor(), 2);
+        ed.move_home();
+        assert_eq!(ed.cursor(), 0);
+    }
+
+    #[test]
+    fn take_clears() {
+        let mut ed = InputEditor::new();
+        ed.insert('x');
+        let text = ed.take();
+        assert_eq!(text, "x");
+        assert!(ed.is_empty());
+    }
+
+    #[test]
+    fn multiline() {
+        let mut ed = InputEditor::new();
+        ed.insert('a');
+        ed.insert('\n');
+        ed.insert('b');
+        assert_eq!(ed.text(), "a\nb");
+    }
+}

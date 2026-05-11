@@ -1384,8 +1384,11 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossterm",
- "futures",
  "parking_lot",
+ "pi-agent",
+ "pi-llm",
+ "pi-session",
+ "pi-tools",
  "pi-types",
  "ratatui",
  "serde",

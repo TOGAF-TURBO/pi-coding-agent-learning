@@ -11,6 +11,7 @@
 //! ```
 
 use std::io::Write;
+use std::sync::Arc;
 
 use anyhow::{Context, Result, anyhow};
 use futures::StreamExt;
@@ -23,6 +24,9 @@ use crate::system_prompt::SystemPromptBuilder;
 use pi_types::session::MessageEntry;
 use pi_types::tool::ToolResult;
 
+/// 实时事件回调 — Agent 循环在流式接收时通过此回调通知外部。
+pub type StreamSink = Box<dyn Fn(StreamEvent) + Send + Sync>;
+
 /// Agent 循环运行时。
 pub struct AgentLoop {
     session: JsonlSession,
@@ -34,6 +38,10 @@ pub struct AgentLoop {
     max_iterations: usize,
     api_key: String,
     base_url: Option<String>,
+    /// 实时事件回调（用于 TUI 流式更新）。
+    stream_sink: Option<Arc<StreamSink>>,
+    /// 是否在 stderr 输出流式文本（print 模式）。
+    stderr_output: bool,
 }
 
 /// Agent 循环输出 — 收集的最终响应。
@@ -82,6 +90,8 @@ impl AgentLoop {
             max_iterations: 50,
             api_key: String::new(),
             base_url: None,
+            stream_sink: None,
+            stderr_output: true,
         }
     }
 
@@ -103,6 +113,27 @@ impl AgentLoop {
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
         self
+    }
+
+    /// 设置实时事件回调（用于 TUI 流式更新）。
+    /// 设置后自动关闭 stderr 输出。
+    pub fn with_stream_sink(mut self, sink: Arc<StreamSink>) -> Self {
+        self.stream_sink = Some(sink);
+        self.stderr_output = false;
+        self
+    }
+
+    /// 发射事件到 sink 和/或 stderr。
+    fn emit(&self, event: StreamEvent) {
+        if let Some(sink) = &self.stream_sink {
+            sink(event.clone());
+        }
+        if self.stderr_output {
+            if let StreamEvent::TextDelta { text } = &event {
+                eprint!("{}", text);
+                let _ = std::io::stderr().flush();
+            }
+        }
     }
 
     /// 发送用户消息并运行 agent 循环直到完成。
@@ -194,7 +225,11 @@ impl AgentLoop {
             let mut tool_results: Vec<ContentBlock> = Vec::new();
 
             for tc in &response.tool_calls {
-                eprintln!("[tool] {}({})", tc.name, tc.input);
+                self.emit(StreamEvent::ToolCallStart {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    index: 0,
+                });
 
                 let result = self.execute_tool(&tc.name, tc.input.clone()).await;
 
@@ -203,10 +238,12 @@ impl AgentLoop {
                     Err(e) => (format!("Tool execution error: {e}"), true),
                 };
 
-                eprintln!("[tool] → {}{}", 
-                    if is_error { "ERROR: " } else { "" },
-                    if output.len() > 200 { &output[..200] } else { &output }
-                );
+                self.emit(StreamEvent::ToolCallEnd {
+                    index: 0,
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    input: tc.input.clone(),
+                });
 
                 tool_results.push(ContentBlock::tool_result(&tc.id, &output, is_error));
             }
@@ -252,12 +289,11 @@ impl AgentLoop {
             match event {
                 Ok(StreamEvent::TextDelta { text }) => {
                     resp.text.push_str(&text);
-                    // 实时输出文本到 stderr（不干扰 stdout 的最终输出）
-                    eprint!("{}", text);
-                    let _ = std::io::stderr().flush();
+                    self.emit(StreamEvent::TextDelta { text });
                 }
                 Ok(StreamEvent::ThinkingDelta { thinking }) => {
                     resp.thinking.push_str(&thinking);
+                    self.emit(StreamEvent::ThinkingDelta { thinking });
                 }
                 Ok(StreamEvent::ToolCallStart { id, name, index }) => {
                     // 确保有足够空间
@@ -282,10 +318,12 @@ impl AgentLoop {
                     resp.tool_calls[index] = ToolCallInfo { id, name, input };
                 }
                 Ok(StreamEvent::Stop { reason }) => {
+                    self.emit(StreamEvent::Stop { reason: reason.clone() });
                     resp.stop_reason = reason;
                 }
                 Ok(StreamEvent::Usage(_)) => {}
                 Ok(StreamEvent::Error { message }) => {
+                    self.emit(StreamEvent::Error { message: message.clone() });
                     return Err(anyhow!("LLM error: {message}"));
                 }
                 Ok(StreamEvent::Start) => {}
@@ -296,7 +334,9 @@ impl AgentLoop {
             }
         }
 
-        eprintln!(); // 流结束后换行
+        if self.stderr_output {
+            eprintln!(); // 流结束后换行
+        }
         Ok(resp)
     }
 

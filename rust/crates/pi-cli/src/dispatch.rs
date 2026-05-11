@@ -26,7 +26,6 @@ use pi_tools::find::FindTool;
 use pi_tools::grep::GrepTool;
 use pi_tools::registry::ToolRegistry;
 use pi_tui;
-use pi_tui::app::AgentState;
 
 /// 启动流水线。
 pub fn run(cli: Cli) -> Result<()> {
@@ -308,7 +307,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
     let provider_config = auth.get_provider(&provider);
-    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages");
+    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages").to_string();
     let base_url = provider_config.and_then(|c| c.base_url.clone());
 
     let effective_base_url = if api_type == "openai-completions" || api_type == "openai-responses" {
@@ -321,22 +320,6 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         base_url
     };
 
-    // 创建工具
-    let tools = ToolRegistry::new();
-    tools.register(BashTool::new(&cwd_str));
-    tools.register(ReadTool::new());
-    tools.register(WriteTool::new());
-    tools.register(EditTool::new());
-    tools.register(FindTool::new(&cwd_str));
-    tools.register(GrepTool::new(&cwd_str));
-
-    // 创建会话
-    let session_dir = config::session_dir(&cfg)
-        .unwrap_or_else(|| cwd.join(".piso").join("sessions"));
-    let mgr = SessionManager::new(&session_dir);
-    mgr.ensure_dir().await?;
-    let _session = mgr.create(&cwd_str).await?;
-
     // 系统提示
     let mut prompt_builder = SystemPromptBuilder::new(&cwd_str).with_tool_guides();
     if !cli.no_context_files {
@@ -348,55 +331,17 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         }
     }
 
-    let system_prompt = prompt_builder.build();
-    let model_clone = model.clone();
-    let api_key_clone = api_key.clone();
-    let base_url_clone = effective_base_url.clone();
+    let tui_cfg = pi_tui::InteractiveConfig {
+        model,
+        provider,
+        api_key,
+        api_type,
+        base_url: effective_base_url,
+        cwd,
+        system_prompt: prompt_builder.build(),
+    };
 
-    // 创建 driver（每次 submit 新建，因为 AgentLoop takes ownership）
-    let api_type_clone = api_type.to_string();
-    let agent_runner = Box::new(move |text: String, state: std::sync::Arc<pi_tui::AppState>| {
-        state.push_user(&text);
-        state.set_state(AgentState::Thinking);
-
-        let driver: Box<dyn LlmDriver> = match api_type_clone.as_str() {
-            "openai-completions" | "openai-responses" => Box::new(OpenAiDriver::new()),
-            "google-gemini" | "gemini" => Box::new(GeminiDriver::new()),
-            _ => Box::new(AnthropicDriver::new()),
-        };
-
-        let rt = tokio::runtime::Runtime::new().unwrap();
-        rt.block_on(async {
-            // 新建 session（简化版）
-            let tmp = tempfile::tempdir().unwrap();
-            let path = tmp.path().join("session.jsonl");
-            let _keep = tmp.keep();
-            let s = JsonlSession::create(&path, &cwd_str).await.unwrap();
-
-            let mut agent = AgentLoop::new(s, driver, tools.clone_for_agent(), model_clone.clone())
-                .with_api_key(api_key_clone.clone())
-                .with_system_prompt(system_prompt.clone());
-
-            if let Some(url) = base_url_clone.clone() {
-                agent = agent.with_base_url(url);
-            }
-
-            state.set_state(AgentState::Streaming);
-
-            match agent.run(&text).await {
-                Ok(output) => {
-                    state.finish_assistant();
-                    state.set_state(AgentState::Idle);
-                    let _ = output;
-                }
-                Err(e) => {
-                    state.set_state(AgentState::Error(format!("{e}")));
-                }
-            }
-        });
-    });
-
-    pi_tui::run_interactive(model.to_string(), provider.to_string(), agent_runner).await
+    pi_tui::run_interactive(tui_cfg).await
 }
 
 async fn run_rpc(_cli: Cli) -> Result<()> {

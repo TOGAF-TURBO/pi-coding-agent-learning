@@ -11,5 +11,5 @@ pub mod theme;
 pub use app::AppState;
 pub use engine::TuiEngine;
 pub use input::InputEditor;
-pub use interactive::run_interactive;
+pub use interactive::{run_interactive, InteractiveConfig};
 pub use theme::Theme;
