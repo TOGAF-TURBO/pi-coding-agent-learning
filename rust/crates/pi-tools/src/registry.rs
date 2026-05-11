@@ -46,6 +46,14 @@ impl ToolRegistry {
         self.tools.read().keys().cloned().collect()
     }
 
+    /// 保留指定名称的工具（白名单过滤）。
+    pub fn retain<F>(&self, f: F)
+    where
+        F: Fn(&str) -> bool,
+    {
+        self.tools.write().retain(|name, _| f(name));
+    }
+
     /// Clone registry for a new agent instance.
     /// Since tools are Arc<dyn ToolExecutor>, cloning is cheap.
     pub fn clone_for_agent(&self) -> Self {

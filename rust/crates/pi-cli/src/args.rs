@@ -66,10 +66,6 @@ pub struct Cli {
     #[arg(long)]
     pub mode: Option<String>,
 
-    /// Don't persist session.
-    #[arg(long)]
-    pub no_session: bool,
-
     /// Disable all tools.
     #[arg(long, short = 'n')]
     pub no_tools: bool,
@@ -129,6 +125,22 @@ pub struct Cli {
     /// Initial prompt message (positional args).
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub messages: Vec<String>,
+
+    /// Comma-separated model patterns for Ctrl+P cycling.
+    #[arg(long)]
+    pub models: Option<String>,
+
+    /// Comma-separated allowlist of tool names to enable.
+    #[arg(long, short = 't')]
+    pub tools: Option<String>,
+
+    /// Directory for session storage.
+    #[arg(long)]
+    pub session_dir: Option<String>,
+
+    /// Don't persist session (ephemeral).
+    #[arg(long)]
+    pub no_session: bool,
 }
 
 /// 子命令。

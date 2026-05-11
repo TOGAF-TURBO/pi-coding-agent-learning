@@ -33,6 +33,42 @@ pub trait ExtensionApi {
     /// 订阅模型切换事件。
     fn on_model_switched(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>);
 
+    /// 订阅 turn 开始事件。
+    fn on_turn_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
+
+    /// 订阅 turn 结束事件。
+    fn on_turn_end(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
+
+    /// 订阅消息开始事件。
+    fn on_message_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
+
+    /// 订阅消息结束事件。
+    fn on_message_end(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
+
+    /// 订阅工具执行开始事件（含参数）。
+    fn on_tool_execution_start(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>);
+
+    /// 订阅工具执行结束事件。
+    fn on_tool_execution_end(&mut self, handler: Box<dyn Fn(&str, &str, bool) + Send + Sync>);
+
+    /// 订阅会话开始事件。
+    fn on_session_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
+
+    /// 订阅会话压缩事件。
+    fn on_session_compact(&mut self, handler: Box<dyn Fn(usize) + Send + Sync>);
+
+    /// 订阅会话关闭事件。
+    fn on_session_shutdown(&mut self, handler: Box<dyn Fn() + Send + Sync>);
+
+    /// 订阅错误事件。
+    fn on_error(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
+
+    /// 订阅 provider 请求前事件。
+    fn on_before_provider_request(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>);
+
+    /// 订阅 provider 响应后事件。
+    fn on_after_provider_response(&mut self, handler: Box<dyn Fn(&str, u64, u64) + Send + Sync>);
+
     /// 注册自定义工具。
     /// 参数：(name, description, handler)
     /// handler 接收 JSON 输入，返回 JSON 输出。
@@ -105,6 +141,18 @@ pub struct HookRegistry {
     pub on_tool_call_start: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
     pub on_tool_call_end: Vec<Box<dyn Fn(&str, &str, bool) + Send + Sync>>,
     pub on_model_switched: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
+    pub on_turn_start: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_turn_end: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_message_start: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_message_end: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_tool_execution_start: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
+    pub on_tool_execution_end: Vec<Box<dyn Fn(&str, &str, bool) + Send + Sync>>,
+    pub on_session_start: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_session_compact: Vec<Box<dyn Fn(usize) + Send + Sync>>,
+    pub on_session_shutdown: Vec<Box<dyn Fn() + Send + Sync>>,
+    pub on_error: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_before_provider_request: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
+    pub on_after_provider_response: Vec<Box<dyn Fn(&str, u64, u64) + Send + Sync>>,
     pub tools: Vec<ToolEntry>,
     pub commands: Vec<CommandEntry>,
     pub message_renderers: Vec<Box<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
@@ -170,6 +218,54 @@ impl ExtensionApi for BasicExtensionApi {
 
     fn on_model_switched(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>) {
         self.hooks.on_model_switched.push(handler);
+    }
+
+    fn on_turn_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
+        self.hooks.on_turn_start.push(handler);
+    }
+
+    fn on_turn_end(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
+        self.hooks.on_turn_end.push(handler);
+    }
+
+    fn on_message_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
+        self.hooks.on_message_start.push(handler);
+    }
+
+    fn on_message_end(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
+        self.hooks.on_message_end.push(handler);
+    }
+
+    fn on_tool_execution_start(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>) {
+        self.hooks.on_tool_execution_start.push(handler);
+    }
+
+    fn on_tool_execution_end(&mut self, handler: Box<dyn Fn(&str, &str, bool) + Send + Sync>) {
+        self.hooks.on_tool_execution_end.push(handler);
+    }
+
+    fn on_session_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
+        self.hooks.on_session_start.push(handler);
+    }
+
+    fn on_session_compact(&mut self, handler: Box<dyn Fn(usize) + Send + Sync>) {
+        self.hooks.on_session_compact.push(handler);
+    }
+
+    fn on_session_shutdown(&mut self, handler: Box<dyn Fn() + Send + Sync>) {
+        self.hooks.on_session_shutdown.push(handler);
+    }
+
+    fn on_error(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
+        self.hooks.on_error.push(handler);
+    }
+
+    fn on_before_provider_request(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>) {
+        self.hooks.on_before_provider_request.push(handler);
+    }
+
+    fn on_after_provider_response(&mut self, handler: Box<dyn Fn(&str, u64, u64) + Send + Sync>) {
+        self.hooks.on_after_provider_response.push(handler);
     }
 
     fn register_tool(

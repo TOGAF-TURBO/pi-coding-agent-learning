@@ -56,6 +56,90 @@ impl ExtensionRunner {
         }
     }
 
+    /// 通知：turn 开始。
+    pub fn fire_turn_start(&self, prompt: &str) {
+        for handler in &self.hooks.on_turn_start {
+            handler(prompt);
+        }
+    }
+
+    /// 通知：turn 结束。
+    pub fn fire_turn_end(&self, output: &str) {
+        for handler in &self.hooks.on_turn_end {
+            handler(output);
+        }
+    }
+
+    /// 通知：消息开始。
+    pub fn fire_message_start(&self, role: &str) {
+        for handler in &self.hooks.on_message_start {
+            handler(role);
+        }
+    }
+
+    /// 通知：消息结束。
+    pub fn fire_message_end(&self, role: &str) {
+        for handler in &self.hooks.on_message_end {
+            handler(role);
+        }
+    }
+
+    /// 通知：工具执行开始。
+    pub fn fire_tool_execution_start(&self, name: &str, input: &str) {
+        for handler in &self.hooks.on_tool_execution_start {
+            handler(name, input);
+        }
+    }
+
+    /// 通知：工具执行结束。
+    pub fn fire_tool_execution_end(&self, name: &str, output: &str, is_error: bool) {
+        for handler in &self.hooks.on_tool_execution_end {
+            handler(name, output, is_error);
+        }
+    }
+
+    /// 通知：会话开始。
+    pub fn fire_session_start(&self, session_id: &str) {
+        for handler in &self.hooks.on_session_start {
+            handler(session_id);
+        }
+    }
+
+    /// 通知：会话压缩。
+    pub fn fire_session_compact(&self, removed: usize) {
+        for handler in &self.hooks.on_session_compact {
+            handler(removed);
+        }
+    }
+
+    /// 通知：会话关闭。
+    pub fn fire_session_shutdown(&self) {
+        for handler in &self.hooks.on_session_shutdown {
+            handler();
+        }
+    }
+
+    /// 通知：错误。
+    pub fn fire_error(&self, message: &str) {
+        for handler in &self.hooks.on_error {
+            handler(message);
+        }
+    }
+
+    /// 通知：provider 请求前。
+    pub fn fire_before_provider_request(&self, model: &str, provider: &str) {
+        for handler in &self.hooks.on_before_provider_request {
+            handler(model, provider);
+        }
+    }
+
+    /// 通知：provider 响应后。
+    pub fn fire_after_provider_response(&self, model: &str, input_tokens: u64, output_tokens: u64) {
+        for handler in &self.hooks.on_after_provider_response {
+            handler(model, input_tokens, output_tokens);
+        }
+    }
+
     /// 查找已注册的自定义工具。
     pub fn find_tool(&self, name: &str) -> Option<&crate::api::ToolEntry> {
         self.hooks.tools.iter().find(|t| t.name == name)

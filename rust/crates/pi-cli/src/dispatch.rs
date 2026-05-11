@@ -25,6 +25,7 @@ use pi_tools::write::WriteTool;
 use pi_tools::edit::EditTool;
 use pi_tools::find::FindTool;
 use pi_tools::grep::GrepTool;
+use pi_tools::ls::LsTool;
 use pi_tools::registry::ToolRegistry;
 use pi_tui;
 
@@ -158,6 +159,13 @@ async fn run_print(cli: Cli) -> Result<()> {
         tools.register(EditTool::new());
         tools.register(FindTool::new(&cwd_str));
         tools.register(GrepTool::new(&cwd_str));
+        tools.register(LsTool::new());
+    }
+
+    // --tools 白名单过滤
+    if let Some(tool_list) = &cli.tools {
+        let allowed: Vec<&str> = tool_list.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        tools.retain(|name| allowed.contains(&name));
     }
 
     // 创建或恢复会话
@@ -257,7 +265,11 @@ async fn resolve_session(
     cwd: &std::path::Path,
     cwd_str: &str,
 ) -> Result<JsonlSession> {
-    let session_dir = config::session_dir_for_cwd(cfg, cwd);
+    let session_dir = if let Some(dir) = &cli.session_dir {
+        std::path::PathBuf::from(dir)
+    } else {
+        config::session_dir_for_cwd(cfg, cwd)
+    };
 
     if cli.no_session {
         let tmp = tempfile::tempdir()?;
@@ -392,7 +404,17 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let session_dir = config::session_dir_for_cwd(&cfg, &cwd);
 
     // 收集可用模型列表（用于模型选择器）
-    let available_models = collect_available_models(&auth);
+    let mut available_models = collect_available_models(&auth);
+
+    // --models 过滤
+    if let Some(patterns) = &cli.models {
+        let patterns: Vec<&str> = patterns.split(',').map(|s| s.trim()).collect();
+        available_models.retain(|(prov, _id, _name)| {
+            patterns.iter().any(|p| {
+                prov.contains(p) || _id.contains(p) || _name.contains(p)
+            })
+        });
+    }
 
     // 加载快捷键
     let kb_path = config::config_dir()

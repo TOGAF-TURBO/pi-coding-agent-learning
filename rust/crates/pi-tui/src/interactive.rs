@@ -51,6 +51,8 @@ enum Command {
     Export { path: String },
     /// 压缩上下文。
     Compact,
+    /// 新建会话。
+    NewSession,
 }
 
 /// 交互模式配置。
@@ -198,6 +200,9 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                             total
                         ));
                     }
+                }
+                Command::NewSession => {
+                    agent_state.push_system("New session requested — restart piso to start fresh.");
                 }
             }
         }
@@ -796,6 +801,90 @@ async fn handle_slash_command(
                 state.push_system(&format!("No messages matching '{}'", term));
             } else {
                 state.push_system(&format!("Found {} messages:\n{}", matches.len(), matches.join("\n")));
+            }
+        }
+        SlashCommand::NewSession => {
+            let _ = cmd_tx.send(Command::NewSession);
+            state.push_system("Starting new session...");
+        }
+        SlashCommand::Reload => {
+            // 重载快捷键和主题
+            let kb_path = std::env::var("HOME").ok()
+                .map(|h| std::path::PathBuf::from(h).join(".piso/keybindings.json"))
+                .unwrap_or_default();
+            if kb_path.exists() {
+                let _kb = crate::keybinding::KeyBindings::load(&kb_path);
+                state.push_system("Reloaded keybindings");
+            } else {
+                state.push_system("No keybindings.json found");
+            }
+        }
+        SlashCommand::Copy => {
+            // 找到最后一条 assistant 消息
+            let entries = state.entries.read();
+            let last_assistant = entries.iter().rev().find(|e| matches!(e.role, crate::app::ChatRole::Assistant));
+            if let Some(entry) = last_assistant {
+                let text = entry.content.clone();
+                drop(entries);
+                // 尝试复制到剪贴板
+                match std::process::Command::new("xclip").args(["-selection", "clipboard"]).stdin(std::process::Stdio::piped()).spawn() {
+                    Ok(mut child) => {
+                        if let Some(stdin) = child.stdin.as_mut() {
+                            use std::io::Write;
+                            let _ = stdin.write_all(text.as_bytes());
+                        }
+                        let _ = child.wait();
+                        state.push_system(&format!("Copied {} chars to clipboard", text.len()));
+                    }
+                    Err(_) => {
+                        // xclip 不可用，尝试 pbcopy (macOS)
+                        match std::process::Command::new("pbcopy").stdin(std::process::Stdio::piped()).spawn() {
+                            Ok(mut child) => {
+                                if let Some(stdin) = child.stdin.as_mut() {
+                                    use std::io::Write;
+                                    let _ = stdin.write_all(text.as_bytes());
+                                }
+                                let _ = child.wait();
+                                state.push_system(&format!("Copied {} chars to clipboard", text.len()));
+                            }
+                            Err(_) => {
+                                state.push_system("No clipboard tool found (install xclip or pbcopy)");
+                            }
+                        }
+                    }
+                }
+            } else {
+                drop(entries);
+                state.push_system("No assistant message to copy");
+            }
+        }
+        SlashCommand::Fork(at) => {
+            if at.is_empty() {
+                state.push_system("Usage: /fork <message-id or index>");
+            } else {
+                state.push_system(&format!("Fork at '{}' not yet implemented", at));
+            }
+        }
+        SlashCommand::SessionInfo => {
+            let entries = state.entries.read();
+            let footer = state.footer.read();
+            let user_count = entries.iter().filter(|e| matches!(e.role, crate::app::ChatRole::User)).count();
+            let assistant_count = entries.iter().filter(|e| matches!(e.role, crate::app::ChatRole::Assistant)).count();
+            let tool_count = entries.iter().filter(|e| matches!(e.role, crate::app::ChatRole::Tool { .. })).count();
+            drop(entries);
+            state.push_system(&format!(
+                "Session info:\n  Messages: {} user, {} assistant, {} tool\n  Model: {} ({})\n  Tokens: {} in, {} out\n  Total entries: {}",
+                user_count, assistant_count, tool_count,
+                footer.model, footer.provider,
+                footer.input_tokens, footer.output_tokens,
+                user_count + assistant_count + tool_count,
+            ));
+        }
+        SlashCommand::Name(name) => {
+            if name.is_empty() {
+                state.push_system("Usage: /name <session-name>");
+            } else {
+                state.push_system(&format!("Session named: {}", name));
             }
         }
         SlashCommand::Sessions => {

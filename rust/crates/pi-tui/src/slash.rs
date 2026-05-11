@@ -34,6 +34,18 @@ pub enum SlashCommand {
     Find(String),
     /// 在当前会话中搜索消息。
     Grep(String),
+    /// 创建新会话。
+    NewSession,
+    /// 重载配置。
+    Reload,
+    /// 复制最后一条助手消息。
+    Copy,
+    /// 从指定消息分叉。
+    Fork(String),
+    /// 显示会话信息。
+    SessionInfo,
+    /// 设置会话名称。
+    Name(String),
     /// 打开会话选择器。
     Sessions,
     /// 退出。
@@ -66,6 +78,12 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "cost" | "c" => SlashCommand::Cost,
         "find" | "f" | "search" => SlashCommand::Find(arg.unwrap_or_default()),
         "grep" | "g" => SlashCommand::Grep(arg.unwrap_or_default()),
+        "new" => SlashCommand::NewSession,
+        "reload" => SlashCommand::Reload,
+        "copy" => SlashCommand::Copy,
+        "fork" => SlashCommand::Fork(arg.unwrap_or_default()),
+        "session" | "info" => SlashCommand::SessionInfo,
+        "name" => SlashCommand::Name(arg.unwrap_or_default()),
         "sessions" | "s" => SlashCommand::Sessions,
         "quit" | "q" | "exit" => SlashCommand::Quit,
         _ => SlashCommand::Unknown(cmd.to_string()),
@@ -86,6 +104,12 @@ pub fn help_text() -> String {
         "  /cost, /c           Show estimated API cost",
         "  /find, /f <term>    Search across sessions",
         "  /grep, /g <term>   Search current session messages",
+        "  /new                Start a new session",
+        "  /reload             Reload keybindings/themes/skills",
+        "  /copy               Copy last assistant message",
+        "  /fork [at]          Fork session at message",
+        "  /session, /info     Show session info",
+        "  /name <name>        Set session display name",
         "  /sessions, /s       Open session picker",
         "  /quit, /q           Quit piso",
     ].join("\n")
