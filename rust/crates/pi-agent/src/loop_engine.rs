@@ -24,6 +24,9 @@ use crate::system_prompt::SystemPromptBuilder;
 use pi_types::session::MessageEntry;
 use pi_types::tool::ToolResult;
 
+/// 可选的扩展运行时引用 — 注入到 AgentLoop 中以触发钩子。
+pub type ExtensionRunnerRef = Option<std::sync::Weak<pi_extensions::ExtensionRunner>>;
+
 /// 实时事件回调 — Agent 循环在流式接收时通过此回调通知外部。
 pub type StreamSink = Box<dyn Fn(StreamEvent) + Send + Sync>;
 
@@ -42,6 +45,10 @@ pub struct AgentLoop {
     stream_sink: Option<Arc<StreamSink>>,
     /// 是否在 stderr 输出流式文本（print 模式）。
     stderr_output: bool,
+    /// 扩展运行时（弱引用，避免循环）。
+    extension_runner: ExtensionRunnerRef,
+    /// Token 用量统计。
+    usage: TokenUsage,
 }
 
 /// Agent 循环输出 — 收集的最终响应。
@@ -51,6 +58,14 @@ pub struct AgentOutput {
     pub thinking: String,
     pub tool_calls: usize,
     pub stop_reason: Option<StopReason>,
+    pub usage: TokenUsage,
+}
+
+/// Token 用量统计。
+#[derive(Debug, Clone, Default)]
+pub struct TokenUsage {
+    pub input_tokens: u32,
+    pub output_tokens: u32,
 }
 
 /// 流式收集的一次 LLM 响应。
@@ -60,6 +75,8 @@ struct LlmResponse {
     thinking: String,
     tool_calls: Vec<ToolCallInfo>,
     stop_reason: Option<StopReason>,
+    input_tokens: u32,
+    output_tokens: u32,
 }
 
 /// 完整的工具调用信息。
@@ -92,6 +109,8 @@ impl AgentLoop {
             base_url: None,
             stream_sink: None,
             stderr_output: true,
+            extension_runner: None,
+            usage: TokenUsage::default(),
         }
     }
 
@@ -123,6 +142,12 @@ impl AgentLoop {
         self
     }
 
+    /// 设置扩展运行时（弱引用）。
+    pub fn with_extension_runner(mut self, runner: Arc<pi_extensions::ExtensionRunner>) -> Self {
+        self.extension_runner = Some(Arc::downgrade(&runner));
+        self
+    }
+
     /// 发射事件到 sink 和/或 stderr。
     fn emit(&self, event: StreamEvent) {
         if let Some(sink) = &self.stream_sink {
@@ -143,6 +168,9 @@ impl AgentLoop {
 
     /// 发送用户消息并运行 agent 循环直到完成。
     pub async fn run(&mut self, user_message: &str) -> Result<AgentOutput> {
+        // 扩展钩子：agent 开始
+        self.fire_agent_start(user_message);
+
         // 追加用户消息到会话
         let user_entry = MessageEntry {
             entry_type: "message".to_string(),
@@ -184,6 +212,10 @@ impl AgentLoop {
             // 调用 LLM，收集流式响应
             let response = self.call_llm(request).await?;
 
+            // 累积 token 用量
+            self.usage.input_tokens += response.input_tokens;
+            self.usage.output_tokens += response.output_tokens;
+
             // 收集内容块
             let mut assistant_content: Vec<ContentBlock> = Vec::new();
 
@@ -205,7 +237,7 @@ impl AgentLoop {
                 parent_id: self.session.leaf_id().map(|s| s.to_string()),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 role: "assistant".to_string(),
-                content: serde_json::json!(assistant_content.iter().map(|c| content_block_to_json(c)).collect::<Vec<_>>()),
+                content: serde_json::json!(assistant_content.iter().map(content_block_to_json).collect::<Vec<_>>()),
                 model: Some(self.model.clone()),
                 stop_reason: response.stop_reason.map(|r| format!("{r:?}").to_lowercase()),
                 usage: None,
@@ -217,11 +249,14 @@ impl AgentLoop {
 
             // 如果没有工具调用，循环结束
             if response.tool_calls.is_empty() {
+                // 扩展钩子：agent 完成
+                self.fire_agent_done(&total_text);
                 return Ok(AgentOutput {
                     text: total_text,
                     thinking: total_thinking,
                     tool_calls: total_tool_calls,
                     stop_reason: response.stop_reason,
+                    usage: self.usage.clone(),
                 });
             }
 
@@ -257,6 +292,9 @@ impl AgentLoop {
                     is_error,
                 });
 
+                // 扩展钩子：工具调用完成
+                self.fire_tool_call_end(&tc.name, &output, is_error);
+
                 tool_results.push(ContentBlock::tool_result(&tc.id, &output, is_error));
             }
 
@@ -267,7 +305,7 @@ impl AgentLoop {
                 parent_id: self.session.leaf_id().map(|s| s.to_string()),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 role: "user".to_string(),
-                content: serde_json::json!(tool_results.iter().map(|c| content_block_to_json(c)).collect::<Vec<_>>()),
+                content: serde_json::json!(tool_results.iter().map(content_block_to_json).collect::<Vec<_>>()),
                 model: None,
                 stop_reason: None,
                 usage: None,
@@ -289,6 +327,7 @@ impl AgentLoop {
             thinking: total_thinking,
             tool_calls: total_tool_calls,
             stop_reason: Some(StopReason::Length),
+            usage: self.usage.clone(),
         })
     }
 
@@ -330,10 +369,14 @@ impl AgentLoop {
                     resp.tool_calls[index] = ToolCallInfo { id, name, input };
                 }
                 Ok(StreamEvent::Stop { reason }) => {
-                    self.emit(StreamEvent::Stop { reason: reason.clone() });
+                    self.emit(StreamEvent::Stop { reason });
                     resp.stop_reason = reason;
                 }
-                Ok(StreamEvent::Usage(_)) => {}
+                Ok(StreamEvent::Usage(usage)) => {
+                    resp.input_tokens += usage.input_tokens;
+                    resp.output_tokens += usage.output_tokens;
+                    self.emit(StreamEvent::Usage(usage));
+                }
                 Ok(StreamEvent::Error { message }) => {
                     self.emit(StreamEvent::Error { message: message.clone() });
                     return Err(anyhow!("LLM error: {message}"));
@@ -364,6 +407,33 @@ impl AgentLoop {
                     .map_err(|e| anyhow!("Tool '{}' execution failed: {}", name, e))
             }
             None => Err(anyhow!("Unknown tool: {name}")),
+        }
+    }
+
+    /// 触发扩展钩子：agent 开始。
+    fn fire_agent_start(&self, prompt: &str) {
+        if let Some(ref weak) = self.extension_runner {
+            if let Some(runner) = weak.upgrade() {
+                runner.fire_agent_start(prompt);
+            }
+        }
+    }
+
+    /// 触发扩展钩子：agent 完成。
+    fn fire_agent_done(&self, output: &str) {
+        if let Some(ref weak) = self.extension_runner {
+            if let Some(runner) = weak.upgrade() {
+                runner.fire_agent_done(output);
+            }
+        }
+    }
+
+    /// 触发扩展钩子：工具调用完成。
+    fn fire_tool_call_end(&self, name: &str, output: &str, is_error: bool) {
+        if let Some(ref weak) = self.extension_runner {
+            if let Some(runner) = weak.upgrade() {
+                runner.fire_tool_call_end(name, output, is_error);
+            }
         }
     }
 

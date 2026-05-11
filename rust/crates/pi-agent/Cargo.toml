@@ -10,6 +10,7 @@ pi-types = { path = "../pi-types" }
 pi-llm = { path = "../pi-llm" }
 pi-session = { path = "../pi-session" }
 pi-tools = { path = "../pi-tools" }
+pi-extensions = { path = "../pi-extensions" }
 tokio = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }

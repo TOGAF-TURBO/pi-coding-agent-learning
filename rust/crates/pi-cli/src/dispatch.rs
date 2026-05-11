@@ -35,6 +35,11 @@ pub fn run(cli: Cli) -> Result<()> {
 }
 
 async fn async_main(cli: Cli) -> Result<()> {
+    // 处理 --export（可与任何模式组合）
+    if let Some(ref path) = cli.export {
+        return run_export(&cli, path).await;
+    }
+
     let mode = resolve_mode(&cli);
 
     match mode {
@@ -544,4 +549,214 @@ fn read_piped_stdin() -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
+}
+
+/// 导出会话为 HTML。
+async fn run_export(cli: &Cli, output_path: &str) -> Result<()> {
+    let cwd = env::current_dir().context("Failed to get current directory")?;
+    let cfg = config::load_config(Some(&cwd));
+    let session_dir = config::session_dir_for_cwd(&cfg, &cwd);
+
+    // 查找最新会话或指定会话
+    let mgr = SessionManager::new(&session_dir);
+    let session_id = if let Some(session_id) = &cli.session {
+        session_id.clone()
+    } else if cli.r#continue {
+        let sessions = mgr.list().await?;
+        sessions.first()
+            .ok_or_else(|| anyhow!("No sessions found"))?
+            .id.clone()
+    } else {
+        let sessions = mgr.list().await?;
+        sessions.first()
+            .ok_or_else(|| anyhow!("No sessions found. Use --session <id> or --continue"))?
+            .id.clone()
+    };
+    let session = mgr.open(&session_id).await?;
+
+    let html = render_session_html(&session);
+    std::fs::write(output_path, &html)
+        .context(format!("Failed to write HTML to {}", output_path))?;
+    eprintln!("Exported session to {}", output_path);
+    Ok(())
+}
+
+/// 将 session 渲染为 HTML。
+fn render_session_html(session: &JsonlSession) -> String {
+    use pi_types::session::SessionEntry;
+
+    let mut body = String::new();
+
+    for entry in session.entries() {
+        if let SessionEntry::Message(msg) = entry {
+            let text = extract_text_from_content(&msg.content);
+            if text.is_empty() {
+                continue;
+            }
+            let escaped = html_escape(&text);
+            match msg.role.as_str() {
+                "user" => {
+                    body.push_str(&format!(
+                        "<div class=\"msg user\"><div class=\"role\">You</div><div class=\"content\"><pre>{}</pre></div></div>\n",
+                        escaped
+                    ));
+                }
+                "assistant" => {
+                    // Markdown → 简单 HTML
+                    let html_content = markdown_to_simple_html(&text);
+                    body.push_str(&format!(
+                        "<div class=\"msg assistant\"><div class=\"role\">Assistant</div><div class=\"content\">{}</div></div>\n",
+                        html_content
+                    ));
+                }
+                _ => {}
+            }
+        }
+    }
+
+    format!(r#"<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>piso session {}</title>
+<style>
+body {{ font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #1a1a2e; color: #e0e0e0; }}
+.msg {{ margin: 16px 0; padding: 12px 16px; border-radius: 8px; }}
+.user {{ background: #16213e; border-left: 3px solid #0f3460; }}
+.assistant {{ background: #1a1a2e; border-left: 3px solid #e94560; }}
+.role {{ font-weight: bold; font-size: 0.85em; color: #888; margin-bottom: 4px; }}
+.content {{ line-height: 1.6; white-space: pre-wrap; }}
+.content pre {{ background: #0d1117; padding: 12px; border-radius: 4px; overflow-x: auto; }}
+.content code {{ background: #0d1117; padding: 2px 6px; border-radius: 3px; font-size: 0.9em; }}
+.content strong {{ color: #fff; }}
+.content h1, .content h2, .content h3 {{ color: #e94560; margin-top: 12px; }}
+.content ul, .content ol {{ padding-left: 20px; }}
+.content li {{ margin: 4px 0; }}
+</style>
+</head>
+<body>
+<h1>piso session</h1>
+<p style="color:#666">ID: {}</p>
+{}
+</body>
+</html>"#, session.id(), session.id(), body)
+}
+
+/// 从 JSON content 数组提取纯文本（dispatch 内部辅助）。
+fn extract_text_from_content(content: &serde_json::Value) -> String {
+    content.as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|block| {
+                    if block.get("type").and_then(|v| v.as_str()) == Some("text") {
+                        block.get("text").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default()
+}
+
+/// 简单 Markdown → HTML 转换。
+fn markdown_to_simple_html(md: &str) -> String {
+    let mut html = String::new();
+    let mut in_code_block = false;
+
+    for line in md.lines() {
+        if line.starts_with("```") {
+            if in_code_block {
+                html.push_str("</code></pre>\n");
+            } else {
+                html.push_str("<pre><code>");
+            }
+            in_code_block = !in_code_block;
+            continue;
+        }
+        if in_code_block {
+            html.push_str(&html_escape(line));
+            html.push('\n');
+            continue;
+        }
+        // 标题
+        if let Some(rest) = line.strip_prefix("# ") {
+            html.push_str(&format!("<h1>{}</h1>\n", html_escape(rest)));
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("## ") {
+            html.push_str(&format!("<h2>{}</h2>\n", html_escape(rest)));
+            continue;
+        }
+        if let Some(rest) = line.strip_prefix("### ") {
+            html.push_str(&format!("<h3>{}</h3>\n", html_escape(rest)));
+            continue;
+        }
+        // 列表
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("- ") || trimmed.starts_with("* ") {
+            let content = &trimmed[2..];
+            html.push_str(&format!("<li>{}</li>\n", inline_html(content)));
+            continue;
+        }
+        // 段落
+        html.push_str(&format!("<p>{}</p>\n", inline_html(line)));
+    }
+
+    html
+}
+
+/// 行内 Markdown → HTML。
+fn inline_html(text: &str) -> String {
+    let text = html_escape(text);
+    // **bold**
+    let text = regex_replace(&text, r"\*\*([^*]+)\*\*", "<strong>$1</strong>");
+    // `code`
+    
+    regex_replace(&text, r"`([^`]+)`", "<code>$1</code>")
+}
+
+/// 简单正则替换（避免引入 regex 依赖）。
+fn regex_replace(text: &str, _pattern: &str, replacement: &str) -> String {
+    // 手动解析 **bold** 和 `code`
+    let mut result = String::new();
+    let mut chars = text.chars().peekable();
+    let mut current = String::new();
+
+    while let Some(ch) = chars.next() {
+        if ch == '`' {
+            result.push_str(&current);
+            current.clear();
+            let mut code = String::new();
+            while let Some(&c) = chars.peek() {
+                if c == '`' { chars.next(); break; }
+                code.push(chars.next().unwrap());
+            }
+            result.push_str(&replacement.replace("$1", &code));
+        } else if ch == '*' && chars.peek() == Some(&'*') {
+            chars.next();
+            result.push_str(&current);
+            current.clear();
+            let mut bold = String::new();
+            while let Some(&c) = chars.peek() {
+                if c == '*' { chars.next(); if chars.peek() == Some(&'*') { chars.next(); break; } else { bold.push('*'); continue; } }
+                bold.push(chars.next().unwrap());
+            }
+            result.push_str(&format!("<strong>{}</strong>", bold));
+        } else {
+            current.push(ch);
+        }
+    }
+    result.push_str(&current);
+    result
+}
+
+/// HTML 转义。
+fn html_escape(s: &str) -> String {
+    s.replace('&', "&amp;")
+     .replace('<', "&lt;")
+     .replace('>', "&gt;")
+     .replace('"', "&quot;")
 }

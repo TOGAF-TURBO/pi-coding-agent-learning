@@ -414,9 +414,11 @@ async fn run_agent_turn(
     state.set_state(AgentState::Streaming);
 
     match agent.run(text).await {
-        Ok(_output) => {
+        Ok(output) => {
             state.finish_assistant();
             state.set_state(AgentState::Idle);
+            // 更新 token 用量
+            state.set_usage(output.usage.input_tokens, output.usage.output_tokens);
         }
         Err(e) => {
             state.finish_assistant();
