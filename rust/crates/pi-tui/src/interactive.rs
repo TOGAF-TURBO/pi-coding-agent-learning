@@ -461,9 +461,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     Action::ToggleFocus => {}
                     Action::NewSession => {}
                     Action::NewLine => {
-                        if !is_running {
-                            input.insert('\n');
-                        }
+                        input.insert('\n');
                     }
                     Action::Retry => {
                         if !is_running {
@@ -474,19 +472,17 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                         }
                     }
                     Action::None => {
-                        if !is_running {
-                            match key.code {
-                                KeyCode::Char(c) => input.insert(c),
-                                KeyCode::Backspace => input.backspace(),
-                                KeyCode::Delete => input.delete(),
-                                KeyCode::Left => input.move_left(),
-                                KeyCode::Right => input.move_right(),
-                                KeyCode::Home => input.move_home(),
-                                KeyCode::End => input.move_end(),
-                                KeyCode::Up => input.history_up(),
-                                KeyCode::Down => input.history_down(),
-                                _ => {}
-                            }
+                        match key.code {
+                            KeyCode::Char(c) => input.insert(c),
+                            KeyCode::Backspace => input.backspace(),
+                            KeyCode::Delete => input.delete(),
+                            KeyCode::Left => input.move_left(),
+                            KeyCode::Right => input.move_right(),
+                            KeyCode::Home => input.move_home(),
+                            KeyCode::End => input.move_end(),
+                            KeyCode::Up => input.history_up(),
+                            KeyCode::Down => input.history_down(),
+                            _ => {}
                         }
                     }
                 }
