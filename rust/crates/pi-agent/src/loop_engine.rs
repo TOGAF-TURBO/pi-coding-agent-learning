@@ -245,6 +245,13 @@ impl AgentLoop {
                     input: tc.input.clone(),
                 });
 
+                self.emit(StreamEvent::ToolResult {
+                    id: tc.id.clone(),
+                    name: tc.name.clone(),
+                    output: output.clone(),
+                    is_error,
+                });
+
                 tool_results.push(ContentBlock::tool_result(&tc.id, &output, is_error));
             }
 
@@ -328,6 +335,9 @@ impl AgentLoop {
                 }
                 Ok(StreamEvent::Start) => {}
                 Ok(StreamEvent::ToolCallDelta { .. }) => {}
+                Ok(StreamEvent::ToolResult { .. }) => {
+                    // ToolResult 由 loop_engine emit，不会从 LLM stream 出现
+                }
                 Err(e) => {
                     return Err(anyhow!("Stream error: {e}"));
                 }

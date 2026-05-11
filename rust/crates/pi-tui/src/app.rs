@@ -124,6 +124,11 @@ impl AppState {
         self.footer.write().state = state;
     }
 
+    /// 获取当前 agent 状态。
+    pub fn agent_state(&self) -> AgentState {
+        self.footer.read().state.clone()
+    }
+
     /// 更新 token 用量。
     pub fn set_usage(&self, input: u32, output: u32) {
         let mut f = self.footer.write();

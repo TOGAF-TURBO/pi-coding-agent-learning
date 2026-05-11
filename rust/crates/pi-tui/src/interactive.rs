@@ -12,6 +12,7 @@
 
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use anyhow::{Context, Result, anyhow};
 use crossterm::event::KeyCode;
@@ -27,7 +28,6 @@ use pi_tools::grep::GrepTool;
 use pi_tools::read::ReadTool;
 use pi_tools::registry::ToolRegistry;
 use pi_tools::write::WriteTool;
-use pi_types::session::SessionEntry;
 use tokio::sync::mpsc;
 
 use crate::app::{AgentState, AppState};
@@ -42,6 +42,8 @@ use crate::layout;
 enum Command {
     /// 发送消息给 agent。
     Send { text: String },
+    /// 中止当前 agent 执行。
+    Abort,
 }
 
 /// 交互模式配置。
@@ -59,7 +61,7 @@ pub struct InteractiveConfig {
 pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let state = Arc::new(AppState::new(&cfg.model, &cfg.provider));
 
-    // 工具注册表（每次 agent 循环 clone）
+    // 工具注册表
     let tools = make_tools(&cfg.cwd);
     let session_dir = cfg.cwd.join(".piso").join("sessions");
     let model = cfg.model.clone();
@@ -72,12 +74,17 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     // 命令 channel
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Command>();
 
+    // Abort flag — TUI 设置，agent task 检查
+    let abort_flag = Arc::new(AtomicBool::new(false));
+
     // Agent task
     let agent_state = state.clone();
+    let agent_abort = abort_flag.clone();
     let agent_handle = tokio::spawn(async move {
         while let Some(cmd) = cmd_rx.recv().await {
             match cmd {
                 Command::Send { text } => {
+                    abort_flag_clear(&agent_abort);
                     run_agent_turn(
                         &text,
                         &agent_state,
@@ -89,8 +96,14 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                         &api_type,
                         &base_url,
                         &system_prompt,
+                        &agent_abort,
                     )
                     .await;
+                }
+                Command::Abort => {
+                    agent_abort.store(true, Ordering::SeqCst);
+                    // 等 agent 检测到 abort 并设置 Idle
+                    // 这里只设 flag，不阻塞
                 }
             }
         }
@@ -117,10 +130,11 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
         match event {
             Event::Key(key) => {
                 let action = keybinding::match_key(&key);
+                let is_running = !matches!(state.agent_state(), AgentState::Idle);
 
                 match action {
                     Action::Submit => {
-                        if !input.is_empty() {
+                        if !input.is_empty() && !is_running {
                             let text = input.take();
                             scroll_offset = 0;
                             let _ = cmd_tx.send(Command::Send { text });
@@ -128,25 +142,35 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                     }
                     Action::Quit => break,
                     Action::Cancel => {
-                        input.clear();
+                        if is_running {
+                            // 中止 agent
+                            let _ = cmd_tx.send(Command::Abort);
+                            state.set_state(AgentState::Idle);
+                        } else if !input.is_empty() {
+                            input.clear();
+                        }
                     }
                     Action::ScrollUp => {
-                        scroll_offset = scroll_offset.saturating_add(1);
+                        scroll_offset = scroll_offset.saturating_add(5);
                     }
                     Action::ScrollDown => {
-                        scroll_offset = scroll_offset.saturating_sub(1);
+                        scroll_offset = scroll_offset.saturating_sub(5);
                     }
-                    Action::None => match key.code {
-                        KeyCode::Char(c) => input.insert(c),
-                        KeyCode::Backspace => input.backspace(),
-                        KeyCode::Delete => input.delete(),
-                        KeyCode::Left => input.move_left(),
-                        KeyCode::Right => input.move_right(),
-                        KeyCode::Home => input.move_home(),
-                        KeyCode::End => input.move_end(),
-                        KeyCode::Enter => input.insert('\n'),
-                        _ => {}
-                    },
+                    Action::None => {
+                        if !is_running {
+                            match key.code {
+                                KeyCode::Char(c) => input.insert(c),
+                                KeyCode::Backspace => input.backspace(),
+                                KeyCode::Delete => input.delete(),
+                                KeyCode::Left => input.move_left(),
+                                KeyCode::Right => input.move_right(),
+                                KeyCode::Home => input.move_home(),
+                                KeyCode::End => input.move_end(),
+                                KeyCode::Enter => input.insert('\n'),
+                                _ => {}
+                            }
+                        }
+                    }
                     _ => {}
                 }
             }
@@ -173,6 +197,7 @@ async fn run_agent_turn(
     api_type: &str,
     base_url: &Option<String>,
     system_prompt: &str,
+    abort_flag: &Arc<AtomicBool>,
 ) {
     state.push_user(text);
     state.set_state(AgentState::Thinking);
@@ -213,7 +238,9 @@ async fn run_agent_turn(
             StreamEvent::ToolCallStart { name, .. } => {
                 sink_state.set_state(AgentState::ToolRunning { name });
             }
-            StreamEvent::ToolCallEnd { name, .. } => {
+            StreamEvent::ToolResult { name, output, is_error, .. } => {
+                // 工具执行结果 → chat
+                sink_state.push_tool_result(&name, &output, is_error);
                 sink_state.set_state(AgentState::Thinking);
             }
             StreamEvent::Stop { .. } => {
@@ -235,18 +262,17 @@ async fn run_agent_turn(
     state.set_state(AgentState::Streaming);
 
     match agent.run(text).await {
-        Ok(output) => {
+        Ok(_output) => {
             state.finish_assistant();
             state.set_state(AgentState::Idle);
-            if output.tool_calls > 0 {
-                state.set_state(AgentState::Idle);
-            }
         }
         Err(e) => {
             state.finish_assistant();
             state.set_state(AgentState::Error(format!("{e}")));
         }
     }
+
+    abort_flag.store(false, Ordering::SeqCst);
 }
 
 /// 构建工具注册表。
@@ -260,4 +286,9 @@ fn make_tools(cwd: &std::path::Path) -> ToolRegistry {
     tools.register(FindTool::new(&cwd_str));
     tools.register(GrepTool::new(&cwd_str));
     tools
+}
+
+/// 清除 abort flag。
+fn abort_flag_clear(flag: &Arc<AtomicBool>) {
+    flag.store(false, Ordering::SeqCst);
 }

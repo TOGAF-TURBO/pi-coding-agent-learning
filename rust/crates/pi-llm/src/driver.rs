@@ -53,6 +53,14 @@ pub enum StreamEvent {
         name: String,
         input: serde_json::Value,
     },
+    /// 工具执行结果（由 AgentLoop 在工具执行后发出）。
+    #[serde(rename = "tool_result")]
+    ToolResult {
+        id: String,
+        name: String,
+        output: String,
+        is_error: bool,
+    },
     /// 用量统计。
     #[serde(rename = "usage")]
     Usage(Usage),

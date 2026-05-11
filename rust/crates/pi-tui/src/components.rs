@@ -8,6 +8,9 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 use crate::app::{AgentState, AppState, ChatRole};
 use crate::layout::LayoutRegions;
 
+/// 工具结果最大显示行数。
+const MAX_TOOL_LINES: usize = 8;
+
 /// 渲染 header 区域。
 pub fn render_header(f: &mut ratatui::Frame, area: Rect, model: &str, provider: &str) {
     let line = Line::from(vec![
@@ -28,10 +31,51 @@ pub fn render_header(f: &mut ratatui::Frame, area: Rect, model: &str, provider: 
     f.render_widget(para, area);
 }
 
+/// 将文本按宽度换行。
+fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
+    let mut lines = Vec::new();
+    for line in text.lines() {
+        if line.is_empty() {
+            lines.push(String::new());
+            continue;
+        }
+        // 按 unicode 字符宽度换行
+        let mut current = String::new();
+        let mut current_width = 0;
+        for ch in line.chars() {
+            let ch_width = unicode_width(ch);
+            if current_width + ch_width > max_width && !current.is_empty() {
+                lines.push(current.clone());
+                current.clear();
+                current_width = 0;
+            }
+            current.push(ch);
+            current_width += ch_width;
+        }
+        if !current.is_empty() {
+            lines.push(current);
+        }
+    }
+    if lines.is_empty() {
+        lines.push(String::new());
+    }
+    lines
+}
+
+/// Unicode 字符显示宽度（简化版：CJK = 2，其余 = 1）。
+fn unicode_width(ch: char) -> usize {
+    if ch >= '\u{4e00}' && ch <= '\u{9fff}' { 2 }       // CJK Unified
+    else if ch >= '\u{3000}' && ch <= '\u{303f}' { 2 }   // CJK Symbols
+    else if ch >= '\u{ff01}' && ch <= '\u{ff60}' { 2 }   // Fullwidth
+    else if ch == '\t' { 4 }
+    else { 1 }
+}
+
 /// 渲染 chat 区域。
-/// `scroll_offset` — 从底部向上的滚动偏移（0 = 底部，=n 向上 n 行）。
+/// `scroll_offset` — 从底部向上的滚动偏移（0 = 底部）。
 pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_offset: usize) {
     let entries = state.entries.read();
+    let content_width = area.width.saturating_sub(4) as usize; // "   " prefix
     let mut lines: Vec<Line> = Vec::new();
 
     for entry in entries.iter() {
@@ -63,40 +107,64 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
             Span::styled(format!(" {} ", prefix), style),
         ]));
 
-        // 内容行（截断到区域宽度）
-        let content_width = area.width.saturating_sub(2) as usize;
-        for content_line in entry.content.lines() {
-            let truncated = if content_line.len() > content_width {
-                format!("{}...", &content_line[..content_width.saturating_sub(3)])
-            } else {
-                content_line.to_string()
-            };
-            lines.push(Line::from(format!("   {}", truncated)));
+        // 内容行 — 自动换行
+        let content_style = match &entry.role {
+            ChatRole::Tool { is_error, .. } if *is_error => {
+                Style::default().fg(Color::Red)
+            }
+            ChatRole::Tool { .. } => {
+                Style::default().fg(Color::Gray)
+            }
+            _ => Style::default(),
+        };
+
+        let wrapped = wrap_text(&entry.content, content_width);
+        let max_lines = match &entry.role {
+            ChatRole::Tool { .. } => MAX_TOOL_LINES,
+            _ => usize::MAX,
+        };
+
+        let display_lines: Vec<String> = if wrapped.len() > max_lines {
+            let mut truncated: Vec<String> = wrapped[..max_lines].to_vec();
+            truncated.push(format!("  ... ({} more lines)", wrapped.len() - max_lines));
+            truncated
+        } else {
+            wrapped
+        };
+
+        for line in &display_lines {
+            lines.push(Line::from(Span::styled(
+                format!("   {}", line),
+                content_style,
+            )));
         }
 
         lines.push(Line::from("")); // 空行分隔
     }
 
-    // 如果正在思考，显示指示器
+    // 思考/工具执行指示器
     let footer_state = state.footer.read();
-    if matches!(footer_state.state, AgentState::Thinking) {
-        lines.push(Line::from(
-            Span::styled(" ● Thinking...", Style::default().fg(Color::Yellow)),
-        ));
-    } else if let AgentState::ToolRunning { name } = &footer_state.state {
-        lines.push(Line::from(
-            Span::styled(
-                format!(" ● Running {}...", name),
-                Style::default().fg(Color::Magenta),
-            ),
-        ));
+    match &footer_state.state {
+        AgentState::Thinking => {
+            lines.push(Line::from(
+                Span::styled(" ● Thinking...", Style::default().fg(Color::Yellow)),
+            ));
+        }
+        AgentState::ToolRunning { name } => {
+            lines.push(Line::from(
+                Span::styled(
+                    format!(" ● Running {}...", name),
+                    Style::default().fg(Color::Magenta),
+                ),
+            ));
+        }
+        _ => {}
     }
 
-    // 滚动到底部
+    // 滚动计算
     let visible = area.height as usize;
     let total = lines.len();
-    let bottom = total; // bottom = latest
-    let start = bottom.saturating_sub(visible).saturating_sub(scroll_offset);
+    let start = total.saturating_sub(visible).saturating_sub(scroll_offset);
 
     let para = Paragraph::new(lines.into_iter().skip(start).collect::<Vec<_>>());
     f.render_widget(para, area);
@@ -110,12 +178,27 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         AgentState::Idle => ("READY", Color::Green),
         AgentState::Thinking => ("THINKING", Color::Yellow),
         AgentState::Streaming => ("STREAMING", Color::Cyan),
-        AgentState::ToolRunning { name } => (name.as_str(), Color::Magenta),
-        AgentState::Error(e) => (e.as_str(), Color::Red),
+        AgentState::ToolRunning { name } => {
+            // 截断长工具名
+            let display = if name.len() > 16 {
+                format!("{}...", &name[..13])
+            } else {
+                name.clone()
+            };
+            (leak_str(display), Color::Magenta)
+        }
+        AgentState::Error(e) => {
+            let display = if e.len() > 30 {
+                format!("ERR: {}...", &e[..24])
+            } else {
+                format!("ERR: {}", e)
+            };
+            (leak_str(display), Color::Red)
+        }
     };
 
     let tokens = if footer.input_tokens + footer.output_tokens > 0 {
-        format!(" │ {}in/{}out", footer.input_tokens, footer.output_tokens)
+        format!(" | {}in/{}out", footer.input_tokens, footer.output_tokens)
     } else {
         String::new()
     };
@@ -135,47 +218,74 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
     f.render_widget(para, area);
 }
 
-/// 渲染 editor 区域。
-pub fn render_editor(f: &mut ratatui::Frame, area: Rect, input: &str, cursor: bool) {
-    let display = if input.is_empty() {
-        "Type a message...".to_string()
-    } else {
-        input.to_string()
-    };
+/// 渲染 editor 区域 — 多行支持。
+pub fn render_editor(f: &mut ratatui::Frame, area: Rect, input: &str, cursor: bool, is_running: bool) {
+    if input.is_empty() {
+        let hint = if is_running {
+            "Waiting for agent..."
+        } else {
+            "Type a message... (Ctrl+O to send, Enter for newline)"
+        };
+        let para = Paragraph::new(hint)
+            .style(Style::default().fg(Color::DarkGray))
+            .block(
+                Block::default()
+                    .borders(Borders::TOP)
+                    .border_style(Style::default().fg(Color::DarkGray)),
+            );
+        f.render_widget(para, area);
+        return;
+    }
 
-    let style = if input.is_empty() {
-        Style::default().fg(Color::DarkGray)
-    } else {
-        Style::default().fg(Color::White)
-    };
-
-    let para = Paragraph::new(display).style(style).block(
-        Block::default()
-            .borders(Borders::TOP)
-            .border_style(Style::default().fg(Color::DarkGray)),
-    );
-
-    if cursor && !input.is_empty() {
-        f.set_cursor(
-            area.x + (input.len() as u16).min(area.width.saturating_sub(2)),
-            area.y + 1,
+    let para = Paragraph::new(input)
+        .style(Style::default().fg(Color::White))
+        .wrap(Wrap { trim: false })
+        .block(
+            Block::default()
+                .borders(Borders::TOP)
+                .border_style(Style::default().fg(if is_running {
+                    Color::Yellow
+                } else {
+                    Color::Cyan
+                })),
         );
+
+    if cursor && !is_running {
+        // 计算光标在多行文本中的位置
+        let text_before_cursor = input;
+        let mut row: u16 = 0;
+        let area_width = area.width.saturating_sub(2); // borders
+        for line in text_before_cursor.lines() {
+            row += (unicode_width_str(line) as u16 + area_width - 1) / area_width.max(1);
+        }
+        let last_line = text_before_cursor.lines().last().unwrap_or("");
+        let col = (unicode_width_str(last_line) as u16) % area_width.max(1);
+        f.set_cursor(area.x + 1 + col, area.y + 1 + row.min(area.height.saturating_sub(2)));
     }
 
     f.render_widget(para, area);
 }
 
 /// 渲染 footer 区域。
-pub fn render_footer(f: &mut ratatui::Frame, area: Rect) {
-    let line = Line::from(vec![
-        Span::styled(" Ctrl+O", Style::default().fg(Color::Cyan)),
-        Span::styled(" Send  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(" Ctrl+C", Style::default().fg(Color::Cyan)),
-        Span::styled(" Quit  ", Style::default().fg(Color::DarkGray)),
-        Span::styled(" Esc", Style::default().fg(Color::Cyan)),
-        Span::styled(" Cancel", Style::default().fg(Color::DarkGray)),
-    ]);
-    let para = Paragraph::new(line);
+pub fn render_footer(f: &mut ratatui::Frame, area: Rect, is_running: bool) {
+    let spans = if is_running {
+        vec![
+            Span::styled(" Esc", Style::default().fg(Color::Yellow)),
+            Span::styled(" Cancel  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Ctrl+C", Style::default().fg(Color::Cyan)),
+            Span::styled(" Quit", Style::default().fg(Color::DarkGray)),
+        ]
+    } else {
+        vec![
+            Span::styled(" Ctrl+O", Style::default().fg(Color::Cyan)),
+            Span::styled(" Send  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Ctrl+C", Style::default().fg(Color::Cyan)),
+            Span::styled(" Quit  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" PgUp/PgDn", Style::default().fg(Color::Cyan)),
+            Span::styled(" Scroll", Style::default().fg(Color::DarkGray)),
+        ]
+    };
+    let para = Paragraph::new(Line::from(spans));
     f.render_widget(para, area);
 }
 
@@ -184,11 +294,23 @@ pub fn render_all(f: &mut ratatui::Frame, regions: LayoutRegions, state: &AppSta
     let footer = state.footer.read();
     let model = footer.model.clone();
     let provider = footer.provider.clone();
+    let is_running = !matches!(&footer.state, AgentState::Idle);
     drop(footer);
 
     render_header(f, regions.header, &model, &provider);
     render_chat(f, regions.chat, state, scroll_offset);
     render_status(f, regions.status, state);
-    render_editor(f, regions.editor, input, true);
-    render_footer(f, regions.footer);
+    render_editor(f, regions.editor, input, true, is_running);
+    render_footer(f, regions.footer, is_running);
+}
+
+/// Leaked string for static lifetime (used in status display).
+/// Only used for short-lived display strings — acceptable leak.
+fn leak_str(s: String) -> &'static str {
+    Box::leak(s.into_boxed_str())
+}
+
+/// 计算 unicode 显示宽度。
+fn unicode_width_str(s: &str) -> usize {
+    s.chars().map(unicode_width).sum()
 }
