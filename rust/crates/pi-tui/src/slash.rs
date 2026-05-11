@@ -30,6 +30,8 @@ pub enum SlashCommand {
     Usage,
     /// 显示费用估算。
     Cost,
+    /// 搜索会话内容。
+    Find(String),
     /// 打开会话选择器。
     Sessions,
     /// 退出。
@@ -60,6 +62,7 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "export" | "e" => SlashCommand::Export(arg.unwrap_or_else(|| "session.html".to_string())),
         "usage" | "tokens" | "u" => SlashCommand::Usage,
         "cost" | "c" => SlashCommand::Cost,
+        "find" | "f" | "search" => SlashCommand::Find(arg.unwrap_or_default()),
         "sessions" | "s" => SlashCommand::Sessions,
         "quit" | "q" | "exit" => SlashCommand::Quit,
         _ => SlashCommand::Unknown(cmd.to_string()),
@@ -78,6 +81,7 @@ pub fn help_text() -> String {
         "  /export, /e [path]  Export session to HTML",
         "  /usage, /u          Show token usage stats",
         "  /cost, /c           Show estimated API cost",
+        "  /find, /f <term>    Search across sessions",
         "  /sessions, /s       Open session picker",
         "  /quit, /q           Quit piso",
     ].join("\n")

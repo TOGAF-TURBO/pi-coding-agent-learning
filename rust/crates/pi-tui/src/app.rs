@@ -47,6 +47,8 @@ pub struct FooterData {
     pub input_tokens: u32,
     pub output_tokens: u32,
     pub duration_secs: u64,
+    /// 估算的上下文 token 数（由 agent 每轮更新）。
+    pub context_tokens: u32,
 }
 
 /// 共享的 App 状态。
@@ -70,6 +72,7 @@ impl AppState {
                 input_tokens: 0,
                 output_tokens: 0,
                 duration_secs: 0,
+                context_tokens: 0,
             }),
             turn_start: RwLock::new(None),
         }
@@ -147,6 +150,11 @@ impl AppState {
             content: text.to_string(),
             streaming: false,
         });
+    }
+
+    /// 更新上下文 token 估算。
+    pub fn set_context_tokens(&self, tokens: u32) {
+        self.footer.write().context_tokens = tokens;
     }
 
     /// 更新 agent 状态。

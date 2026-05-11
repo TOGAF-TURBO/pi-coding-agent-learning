@@ -16,6 +16,7 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::RwLock;
 
 use anyhow::Result;
 use crossterm::event::KeyCode;
@@ -94,6 +95,9 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     // Git 状态检测
     let git_status = crate::git::detect(&cfg.cwd);
     let git_display = crate::git::format_status(&git_status);
+
+    // 存储最后一条用户消息，用于 Retry
+    let last_user_msg: Arc<RwLock<String>> = Arc::new(RwLock::new(String::new()));
 
     let tools = make_tools(&cfg.cwd);
     let session_dir = cfg.session_dir.clone();
@@ -278,6 +282,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                                 continue;
                             }
 
+                            *last_user_msg.write().unwrap() = text.clone();
                             let _ = cmd_tx.send(Command::Send { text });
                         }
                     }
@@ -349,6 +354,14 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                     }
                     Action::ToggleFocus => {}
                     Action::NewSession => {}
+                    Action::Retry => {
+                        if !is_running {
+                            let msg = last_user_msg.read().unwrap().clone();
+                            if !msg.is_empty() {
+                                let _ = cmd_tx.send(Command::Send { text: msg });
+                            }
+                        }
+                    }
                     Action::None => {
                         if !is_running {
                             match key.code {
@@ -420,6 +433,14 @@ async fn run_agent_turn(
             }
             StreamEvent::Stop { .. } => {
                 sink_state.finish_assistant();
+            }
+            StreamEvent::Usage(usage) => {
+                let mut f = sink_state.footer.write();
+                f.input_tokens += usage.input_tokens;
+                f.output_tokens += usage.output_tokens;
+            }
+            StreamEvent::ContextTokens { tokens } => {
+                sink_state.set_context_tokens(tokens);
             }
             _ => {}
         }
@@ -656,6 +677,33 @@ async fn handle_slash_command(
                 out_t, pricing.output_per_m, pi_agent::cost::format_cost((out_t as f64 / 1_000_000.0) * pricing.output_per_m),
                 cost_str,
             ));
+        }
+        SlashCommand::Find(term) => {
+            if term.is_empty() {
+                state.push_system("Usage: /find <search term>");
+                return;
+            }
+            let mgr = SessionManager::new(session_dir.to_path_buf());
+            match mgr.list().await {
+                Ok(sessions) => {
+                    let mut results = Vec::new();
+                    let term_lower = term.to_lowercase();
+                    for sess in &sessions {
+                        // 搜索 session ID 和 CWD
+                        let haystack = format!("{} {}", sess.id, sess.cwd).to_lowercase();
+                        if haystack.contains(&term_lower) {
+                            results.push(format!("{} ({} msgs, {})", sess.id, sess.message_count, sess.cwd));
+                            if results.len() >= 20 { break; }
+                        }
+                    }
+                    if results.is_empty() {
+                        state.push_system(&format!("No sessions matching '{}'", term));
+                    } else {
+                        state.push_system(&format!("Found {} sessions:\n{}", results.len(), results.join("\n")));
+                    }
+                }
+                Err(e) => state.push_system(&format!("Search failed: {e}")),
+            }
         }
         SlashCommand::Sessions => {
             let mgr = SessionManager::new(session_dir);

@@ -70,6 +70,9 @@ pub enum StreamEvent {
     /// 错误。
     #[serde(rename = "error")]
     Error { message: String },
+    /// 上下文 token 估算。
+    #[serde(rename = "context_tokens")]
+    ContextTokens { tokens: u32 },
 }
 
 /// 流类型别名。

@@ -23,6 +23,8 @@ pub enum Action {
     NewSession,
     OpenSessionPicker,
     OpenModelPicker,
+    /// 重试上一个 prompt。
+    Retry,
     None,
 }
 
@@ -49,6 +51,8 @@ pub struct KeyBindings {
     pub open_session_picker: Option<KeyBinding>,
     pub open_model_picker: Option<KeyBinding>,
     pub tab_complete: Option<KeyBinding>,
+    /// 重试上一个 prompt。
+    pub retry: Option<KeyBinding>,
 }
 
 /// 默认键绑定（与 TS 版 pi 兼容）。
@@ -65,6 +69,7 @@ impl KeyBindings {
             open_session_picker: Some(KeyBinding { modifiers: "ctrl".into(), key: "s".into() }),
             open_model_picker: Some(KeyBinding { modifiers: "ctrl".into(), key: "p".into() }),
             tab_complete: Some(KeyBinding { modifiers: "none".into(), key: "tab".into() }),
+            retry: Some(KeyBinding { modifiers: "ctrl".into(), key: "r".into() }),
         }
     }
 
@@ -134,6 +139,7 @@ impl KeyBindings {
             (&self.open_session_picker, Action::OpenSessionPicker),
             (&self.open_model_picker, Action::OpenModelPicker),
             (&self.tab_complete, Action::TabComplete),
+            (&self.retry, Action::Retry),
         ];
         for (kb, action) in fields {
             if let Some(binding) = kb {
@@ -186,6 +192,8 @@ impl KeyBindings {
                 .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+S".to_string());
             let model_key = self.open_model_picker.as_ref()
                 .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+P".to_string());
+            let retry_key = self.retry.as_ref()
+                .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+R".to_string());
             vec![
                 ("key", format!(" {}", submit_key)),
                 ("label", " Send  ".to_string()),
@@ -196,7 +204,9 @@ impl KeyBindings {
                 ("key", format!(" {}", session_key)),
                 ("label", " Sessions  ".to_string()),
                 ("key", format!(" {}", model_key)),
-                ("label", " Models".to_string()),
+                ("label", " Models  ".to_string()),
+                ("key", format!(" {}", retry_key)),
+                ("label", " Retry".to_string()),
             ]
         }
     }

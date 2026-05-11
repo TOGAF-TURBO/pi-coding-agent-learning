@@ -224,6 +224,7 @@ impl AgentLoop {
         for _iteration in 1..=self.max_iterations {
             // 上下文窗口预算检查
             let estimated = self.estimate_context_tokens();
+            self.emit(StreamEvent::ContextTokens { tokens: estimated });
             // 大多数模型 context window >= 128K，当估算超过 100K 时触发压缩
             if estimated > 100_000 {
                 self.emit(StreamEvent::Error {
@@ -482,6 +483,7 @@ impl AgentLoop {
                 Ok(StreamEvent::Start) => {}
                 Ok(StreamEvent::ToolCallDelta { .. }) => {}
                 Ok(StreamEvent::ToolResult { .. }) => {}
+                Ok(StreamEvent::ContextTokens { .. }) => {}
                 Err(e) => {
                     return Err(anyhow!("Stream error: {e}"));
                 }

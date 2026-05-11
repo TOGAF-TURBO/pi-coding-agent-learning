@@ -174,4 +174,19 @@ fn load_models_json(
 
         providers.insert(name.clone(), pc);
     }
+
+    // 校验结果
+    if providers.is_empty() {
+        // 不报错 — 可能还没有配置
+        return;
+    }
+
+    // 检查每个 provider 是否有 API key
+    for (name, pc) in providers.iter() {
+        let has_key = keys.contains_key(name)
+            || pc.api_key.as_ref().is_some_and(|k| !k.is_empty());
+        if !has_key && pc.base_url.is_none() {
+            eprintln!("Warning: provider '{}' has no API key configured", name);
+        }
+    }
 }

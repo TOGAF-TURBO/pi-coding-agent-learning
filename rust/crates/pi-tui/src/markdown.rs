@@ -160,6 +160,39 @@ pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdCol
             }
         }
 
+        // Markdown 表格
+        let trimmed = raw_line.trim();
+        if trimmed.starts_with('|') && trimmed.ends_with('|') {
+            // 分隔行 (|---|---|) 跳过
+            let stripped: String = trimmed.chars().filter(|c| !matches!(c, '|' | '-' | ':' | ' ')).collect();
+            if stripped.is_empty() {
+                // 绘制水平线替代
+                let col_count = trimmed.split('|').filter(|s| !s.is_empty()).count();
+                let separator: String = std::iter::repeat_n("─", col_count * 16).collect();
+                lines.push(Line::from(vec![
+                    Span::styled(separator, Style::default().fg(Color::DarkGray)),
+                ]));
+                continue;
+            }
+            // 数据行 — 解析单元格
+            let cells: Vec<&str> = trimmed
+                .trim_start_matches('|')
+                .trim_end_matches('|')
+                .split('|')
+                .map(|c| c.trim())
+                .collect();
+            let mut spans = Vec::new();
+            spans.push(Span::styled("  ".to_string(), base_style));
+            for (i, cell) in cells.iter().enumerate() {
+                if i > 0 {
+                    spans.push(Span::styled(" │ ".to_string(), Style::default().fg(Color::DarkGray)));
+                }
+                spans.push(Span::styled(cell.to_string(), base_style));
+            }
+            lines.push(Line::from(spans));
+            continue;
+        }
+
         // 普通行 — 解析行内格式
         lines.push(render_inline_with_colors(raw_line, base_style, colors));
     }
@@ -353,5 +386,27 @@ after";
         let lines = render_markdown_with_colors(md, Style::default(), &colors);
         // heading color = green
         assert_eq!(lines[0].spans[0].style.fg, Some(Color::Green));
+    }
+
+    #[test]
+    fn table_rendering() {
+        let md = "| Name | Value |\n|------|-------|\n| foo  | bar   |";
+        let lines = render_markdown(md, Style::default());
+        assert_eq!(lines.len(), 3); // header + separator + data
+    }
+
+    #[test]
+    fn table_separator() {
+        let md = "|------|-------|";
+        let lines = render_markdown(md, Style::default());
+        // separator line becomes horizontal rule
+        assert_eq!(lines.len(), 1);
+    }
+
+    #[test]
+    fn link_rendering() {
+        let line = render_inline("click [here](https://example.com) now", Style::default());
+        assert!(line.spans.len() >= 3);
+        assert_eq!(line.spans[1].content, "here");
     }
 }

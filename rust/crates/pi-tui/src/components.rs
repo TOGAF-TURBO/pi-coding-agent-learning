@@ -249,7 +249,21 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         String::new()
     };
 
-    // 实时计时（thinking/streaming 时显示 elapsed）
+    // 上下文窗口占用
+    let ctx = if footer.context_tokens > 0 {
+        // 大多数模型 context window ~128K
+        let pct = (footer.context_tokens as f64 / 128_000.0 * 100.0) as u32;
+        let ctx_color = if pct > 80 {
+            Color::Red
+        } else if pct > 50 {
+            Color::Yellow
+        } else {
+            Color::DarkGray
+        };
+        (format!(" | ctx:{}%", pct.min(100)), Some(ctx_color))
+    } else {
+        (String::new(), None)
+    };
     let elapsed = if let Some(start) = *state.turn_start.read() {
         let secs = start.elapsed().as_secs();
         if secs >= 60 {
@@ -267,7 +281,7 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         String::new()
     };
 
-    let line = Line::from(vec![
+    let mut line_spans = vec![
         Span::styled(
             format!(" {}", state_text),
             Style::default().fg(state_color).add_modifier(Modifier::BOLD),
@@ -276,11 +290,21 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
             tokens,
             Style::default().fg(Color::DarkGray),
         ),
-        Span::styled(
-            elapsed,
-            Style::default().fg(Color::DarkGray),
-        ),
-    ]);
+    ];
+
+    if let Some(ctx_color) = ctx.1 {
+        line_spans.push(Span::styled(
+            ctx.0,
+            Style::default().fg(ctx_color),
+        ));
+    }
+
+    line_spans.push(Span::styled(
+        elapsed,
+        Style::default().fg(Color::DarkGray),
+    ));
+
+    let line = Line::from(line_spans);
 
     let para = Paragraph::new(line);
     f.render_widget(para, area);
