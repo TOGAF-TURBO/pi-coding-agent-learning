@@ -183,7 +183,7 @@ mod tests {
         let mgr = SessionManager::new(dir.path());
 
         let mut s1 = mgr.create("/project/a").await.unwrap();
-        let mut s2 = mgr.create("/project/b").await.unwrap();
+        let _s2 = mgr.create("/project/b").await.unwrap();
 
         // 追加消息
         let entry = serde_json::from_str(

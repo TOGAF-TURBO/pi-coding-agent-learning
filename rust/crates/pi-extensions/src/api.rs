@@ -227,7 +227,7 @@ mod tests {
         api.on_agent_start(Box::new(|prompt| {
             assert_eq!(prompt, "hello");
         }));
-        api.on_tool_call_end(Box::new(|name, output, is_error| {
+        api.on_tool_call_end(Box::new(|name, _output, is_error| {
             assert_eq!(name, "bash");
             assert!(!is_error);
         }));
