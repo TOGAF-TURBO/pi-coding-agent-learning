@@ -25,6 +25,8 @@ use pi_tools::edit::EditTool;
 use pi_tools::find::FindTool;
 use pi_tools::grep::GrepTool;
 use pi_tools::registry::ToolRegistry;
+use pi_tui;
+use pi_tui::app::AgentState;
 
 /// 启动流水线。
 pub fn run(cli: Cli) -> Result<()> {
@@ -36,7 +38,7 @@ async fn async_main(cli: Cli) -> Result<()> {
     let mode = resolve_mode(&cli);
 
     match mode {
-        AppMode::Interactive => run_interactive(cli).await,
+        AppMode::Interactive => run_interactive_mode(cli).await,
         AppMode::Print => run_print(cli).await,
         AppMode::Rpc => run_rpc(cli).await,
         AppMode::ListModels => run_list_models(cli).await,
@@ -282,10 +284,119 @@ async fn resolve_session(
     mgr.create(cwd_str).await
 }
 
-async fn run_interactive(_cli: Cli) -> Result<()> {
-    eprintln!("piso — interactive mode not yet implemented");
-    eprintln!("Use 'piso -p \"your prompt\"' for print mode");
-    Ok(())
+async fn run_interactive_mode(cli: Cli) -> Result<()> {
+    let cwd = env::current_dir().context("Failed to get current directory")?;
+    let cwd_str = cwd.to_string_lossy().to_string();
+    let cfg = config::load_config(Some(&cwd));
+    let config_dir = config::config_dir();
+    let auth = AuthStorage::load(config_dir.as_deref())?;
+
+    let provider = cli.provider.clone()
+        .or(cfg.provider.clone())
+        .unwrap_or_else(|| "anthropic".to_string());
+
+    let api_key = cli.api_key.clone()
+        .or_else(|| auth.get_key(&provider).map(|s| s.to_string()))
+        .ok_or_else(|| anyhow!(
+            "No API key found for provider '{}'. Set {}_API_KEY or configure ~/.piso/models.json",
+            provider,
+            provider.to_uppercase().replace('-', "_"),
+        ))?;
+
+    let model = cli.model.clone()
+        .or(cfg.model.clone())
+        .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+
+    let provider_config = auth.get_provider(&provider);
+    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages");
+    let base_url = provider_config.and_then(|c| c.base_url.clone());
+
+    let effective_base_url = if api_type == "openai-completions" || api_type == "openai-responses" {
+        base_url.map(|url| {
+            if url.ends_with("/chat/completions") { url }
+            else if url.ends_with('/') { format!("{}chat/completions", url) }
+            else { format!("{}/chat/completions", url) }
+        })
+    } else {
+        base_url
+    };
+
+    // 创建工具
+    let tools = ToolRegistry::new();
+    tools.register(BashTool::new(&cwd_str));
+    tools.register(ReadTool::new());
+    tools.register(WriteTool::new());
+    tools.register(EditTool::new());
+    tools.register(FindTool::new(&cwd_str));
+    tools.register(GrepTool::new(&cwd_str));
+
+    // 创建会话
+    let session_dir = config::session_dir(&cfg)
+        .unwrap_or_else(|| cwd.join(".piso").join("sessions"));
+    let mgr = SessionManager::new(&session_dir);
+    mgr.ensure_dir().await?;
+    let _session = mgr.create(&cwd_str).await?;
+
+    // 系统提示
+    let mut prompt_builder = SystemPromptBuilder::new(&cwd_str).with_tool_guides();
+    if !cli.no_context_files {
+        let ctx_files = context::load_project_context_files(&cwd, config_dir.as_deref());
+        if !ctx_files.is_empty() {
+            prompt_builder = prompt_builder.append(
+                context::format_context_for_prompt(&ctx_files)
+            );
+        }
+    }
+
+    let system_prompt = prompt_builder.build();
+    let model_clone = model.clone();
+    let api_key_clone = api_key.clone();
+    let base_url_clone = effective_base_url.clone();
+
+    // 创建 driver（每次 submit 新建，因为 AgentLoop takes ownership）
+    let api_type_clone = api_type.to_string();
+    let agent_runner = Box::new(move |text: String, state: std::sync::Arc<pi_tui::AppState>| {
+        state.push_user(&text);
+        state.set_state(AgentState::Thinking);
+
+        let driver: Box<dyn LlmDriver> = match api_type_clone.as_str() {
+            "openai-completions" | "openai-responses" => Box::new(OpenAiDriver::new()),
+            "google-gemini" | "gemini" => Box::new(GeminiDriver::new()),
+            _ => Box::new(AnthropicDriver::new()),
+        };
+
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        rt.block_on(async {
+            // 新建 session（简化版）
+            let tmp = tempfile::tempdir().unwrap();
+            let path = tmp.path().join("session.jsonl");
+            let _keep = tmp.keep();
+            let s = JsonlSession::create(&path, &cwd_str).await.unwrap();
+
+            let mut agent = AgentLoop::new(s, driver, tools.clone_for_agent(), model_clone.clone())
+                .with_api_key(api_key_clone.clone())
+                .with_system_prompt(system_prompt.clone());
+
+            if let Some(url) = base_url_clone.clone() {
+                agent = agent.with_base_url(url);
+            }
+
+            state.set_state(AgentState::Streaming);
+
+            match agent.run(&text).await {
+                Ok(output) => {
+                    state.finish_assistant();
+                    state.set_state(AgentState::Idle);
+                    let _ = output;
+                }
+                Err(e) => {
+                    state.set_state(AgentState::Error(format!("{e}")));
+                }
+            }
+        });
+    });
+
+    pi_tui::run_interactive(model.to_string(), provider.to_string(), agent_runner).await
 }
 
 async fn run_rpc(_cli: Cli) -> Result<()> {

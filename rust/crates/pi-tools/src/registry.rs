@@ -45,6 +45,15 @@ impl ToolRegistry {
     pub fn names(&self) -> Vec<String> {
         self.tools.read().keys().cloned().collect()
     }
+
+    /// Clone registry for a new agent instance.
+    /// Since tools are Arc<dyn ToolExecutor>, cloning is cheap.
+    pub fn clone_for_agent(&self) -> Self {
+        let tools = self.tools.read();
+        Self {
+            tools: parking_lot::RwLock::new(tools.clone()),
+        }
+    }
 }
 
 impl Default for ToolRegistry {
