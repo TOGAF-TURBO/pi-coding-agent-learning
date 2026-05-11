@@ -48,6 +48,14 @@ pub(crate) mod colors {
     pub const SELECTED_BG: Color = Color::Rgb(58, 58, 74);     // #3a3a4a
 }
 
+/// Braille spinner 帧序列（与 TS 版 DEFAULT_FRAMES 一致）。
+const SPINNER_FRAMES: &[&str] = &["⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏"];
+
+/// 获取当前 spinner 帧。
+fn spinner_frame(tick: usize) -> &'static str {
+    SPINNER_FRAMES[tick % SPINNER_FRAMES.len()]
+}
+
 /// 格式化 token 数量（与 TS 版一致）。
 fn format_tokens(count: u32) -> String {
     if count < 1000 {
@@ -163,7 +171,7 @@ fn unicode_width(ch: char) -> usize {
 }
 
 /// 渲染 chat 区域。
-pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_offset: usize) {
+pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_offset: usize, tick: usize) {
     let entries = state.entries.read();
     let content_width = area.width.saturating_sub(4) as usize;
     let mut lines: Vec<Line> = Vec::new();
@@ -280,24 +288,25 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
         lines.push(Line::from("")); // 空行分隔
     }
 
-    // 思考/工具执行指示器
+    // 思考/工具执行指示器（带 spinner 动画）
     let footer_state = state.footer.read();
+    let frame = spinner_frame(tick);
     match &footer_state.state {
         AgentState::Thinking => {
             lines.push(Line::from(Span::styled(
-                " ● Thinking...",
+                format!(" {} Thinking...", frame),
                 Style::default().fg(colors::WARNING),
             )));
         }
         AgentState::Streaming => {
             lines.push(Line::from(Span::styled(
-                " ● Streaming...",
+                format!(" {} Streaming...", frame),
                 Style::default().fg(colors::BORDER_ACCENT),
             )));
         }
         AgentState::ToolRunning { name } => {
             lines.push(Line::from(Span::styled(
-                format!(" ● Running {}...", name),
+                format!(" {} Running {}...", frame, name),
                 Style::default().fg(colors::ACCENT),
             )));
         }
@@ -538,6 +547,7 @@ pub fn render_all(
     session_id: &str,
     footer_hints: &[(&'static str, String)],
     git: &str,
+    tick: usize,
 ) {
     let footer = state.footer.read();
     let model = footer.model.clone();
@@ -546,7 +556,7 @@ pub fn render_all(
     drop(footer);
 
     render_header(f, regions.header, &model, &provider, session_id, git);
-    render_chat(f, regions.chat, state, scroll_offset);
+    render_chat(f, regions.chat, state, scroll_offset, tick);
     render_status(f, regions.status, state);
     render_editor(f, regions.editor, input, cursor_pos, true, is_running);
     render_footer(f, regions.footer, is_running, footer_hints);

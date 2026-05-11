@@ -253,6 +253,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let mut engine = TuiEngine::init()?;
     let mut input = crate::input::InputEditor::new();
     let mut scroll_offset: usize = 0;
+    let mut tick: usize = 0;
 
     // Overlay 状态
     let mut overlay: Option<selector::Selector> = None;
@@ -274,6 +275,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 &sid,
                 &hints,
                 &git_display,
+                tick,
             );
 
             // 渲染 overlay（如果有）
@@ -502,7 +504,9 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     _ => {}
                 }
             }
-            _ => {}
+            Event::Tick => {
+                tick = tick.wrapping_add(1);
+            }
         }
     }
 
