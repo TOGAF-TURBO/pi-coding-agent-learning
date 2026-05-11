@@ -158,6 +158,37 @@ pub trait ExtensionApi {
     /// flag_type: 类型 ("boolean", "string", "number")
     /// description: 说明
     fn register_flag(&mut self, name: &str, flag_type: &str, description: &str);
+
+    // ── UI 对话框 API ───────────────────────────────────────
+
+    /// 弹出选择列表，返回用户选中的索引。
+    /// 在 TUI 模式下使用 selector 组件，RPC 模式下发送 extension_ui_request。
+    fn select(&mut self, title: &str, options: &[String]) -> Option<usize> {
+        let _ = (title, options);
+        None
+    }
+
+    /// 弹出确认对话框，返回用户选择。
+    fn confirm(&mut self, title: &str, message: &str) -> Option<bool> {
+        let _ = (title, message);
+        None
+    }
+
+    /// 弹出文本输入框，返回用户输入。
+    fn input(&mut self, title: &str, placeholder: Option<&str>) -> Option<String> {
+        let _ = (title, placeholder);
+        None
+    }
+
+    /// 设置 widget 内容（在 TUI 中渲染扩展自定义区域）。
+    fn set_widget(&mut self, key: &str, content: &str) {
+        let _ = (key, content);
+    }
+
+    /// 设置状态栏文本。
+    fn set_status(&mut self, key: &str, text: &str) {
+        let _ = (key, text);
+    }
 }
 
 /// 扩展持久化存储。
