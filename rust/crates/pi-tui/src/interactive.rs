@@ -17,10 +17,9 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::Result;
 use crossterm::event::KeyCode;
 use pi_agent::loop_engine::{AgentLoop, StreamSink};
-use pi_agent::system_prompt::SystemPromptBuilder;
 use pi_llm::driver::LlmDriver;
 use pi_session::manager::SessionManager;
 use pi_session::JsonlSession;

@@ -365,9 +365,61 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     pi_tui::run_interactive(tui_cfg).await
 }
 
-async fn run_rpc(_cli: Cli) -> Result<()> {
-    eprintln!("piso — rpc mode not yet implemented");
-    Ok(())
+async fn run_rpc(cli: Cli) -> Result<()> {
+    let cwd = env::current_dir().context("Failed to get current directory")?;
+    let cwd_str = cwd.to_string_lossy().to_string();
+    let cfg = config::load_config(Some(&cwd));
+    let config_dir = config::config_dir();
+    let auth = AuthStorage::load(config_dir.as_deref())?;
+
+    let provider = cli.provider.clone()
+        .or(cfg.provider.clone())
+        .unwrap_or_else(|| "anthropic".to_string());
+
+    let api_key = cli.api_key.clone()
+        .or_else(|| auth.get_key(&provider).map(|s| s.to_string()))
+        .ok_or_else(|| anyhow!(
+            "No API key found for provider '{}'",
+            provider,
+        ))?;
+
+    let model = cli.model.clone()
+        .or(cfg.model.clone())
+        .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
+
+    let provider_config = auth.get_provider(&provider);
+    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages").to_string();
+    let base_url = provider_config.and_then(|c| c.base_url.clone());
+
+    // OpenAI-compat 需要追加 /chat/completions
+    let effective_base_url = if api_type == "openai-completions" || api_type == "openai-responses" {
+        base_url.map(|url| {
+            if url.ends_with("/chat/completions") { url }
+            else if url.ends_with('/') { format!("{}chat/completions", url) }
+            else { format!("{}/chat/completions", url) }
+        })
+    } else {
+        base_url
+    };
+
+    let mut prompt_builder = SystemPromptBuilder::new(&cwd_str).with_tool_guides();
+    if !cli.no_context_files {
+        let ctx_files = context::load_project_context_files(&cwd, config_dir.as_deref());
+        if !ctx_files.is_empty() {
+            prompt_builder = prompt_builder.append(
+                context::format_context_for_prompt(&ctx_files)
+            );
+        }
+    }
+
+    crate::rpc::run_rpc(
+        model,
+        api_key,
+        api_type,
+        effective_base_url,
+        prompt_builder.build(),
+        cwd,
+    ).await
 }
 
 async fn run_list_models(_cli: Cli) -> Result<()> {

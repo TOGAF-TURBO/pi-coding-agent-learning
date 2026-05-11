@@ -10,17 +10,14 @@ use ratatui::text::{Line, Span};
 pub fn render_markdown(text: &str, base_style: Style) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut in_code_block = false;
-    let mut code_lang: Option<String> = None;
 
     for raw_line in text.lines() {
         // 代码块边界
         if raw_line.starts_with("```") {
             if in_code_block {
                 in_code_block = false;
-                code_lang = None;
             } else {
                 in_code_block = true;
-                code_lang = Some(raw_line.trim_start_matches('`').trim().to_string());
             }
             continue;
         }

@@ -286,7 +286,7 @@ pub fn render_editor(f: &mut ratatui::Frame, area: Rect, input: &str, cursor: bo
         }
         let last_line = text_before_cursor.lines().last().unwrap_or("");
         let col = (unicode_width_str(last_line) as u16) % area_width.max(1);
-        f.set_cursor(area.x + 1 + col, area.y + 1 + row.min(area.height.saturating_sub(2)));
+        f.set_cursor_position((area.x + 1 + col, area.y + 1 + row.min(area.height.saturating_sub(2))));
     }
 
     f.render_widget(para, area);
