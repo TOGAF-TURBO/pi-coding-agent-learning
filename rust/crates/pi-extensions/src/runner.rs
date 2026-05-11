@@ -75,6 +75,27 @@ impl ExtensionRunner {
     pub fn command_names(&self) -> Vec<&str> {
         self.hooks.commands.iter().map(|c| c.name.as_str()).collect()
     }
+
+    /// 尝试自定义消息渲染。
+    /// 返回 Some(formatted) 如果扩展处理了此消息，None 表示使用默认渲染。
+    pub fn render_message(&self, role: &str, content: &str) -> Option<String> {
+        for renderer in &self.hooks.message_renderers {
+            if let Some(result) = renderer(role, content) {
+                return Some(result);
+            }
+        }
+        None
+    }
+
+    /// 是否有自定义渲染器。
+    pub fn has_message_renderers(&self) -> bool {
+        !self.hooks.message_renderers.is_empty()
+    }
+
+    /// 获取所有编辑器提示。
+    pub fn editor_hints(&self) -> Vec<String> {
+        self.hooks.editor_hints.iter().map(|h| h()).collect()
+    }
 }
 
 #[cfg(test)]

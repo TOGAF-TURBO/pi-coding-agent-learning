@@ -53,6 +53,21 @@ pub trait ExtensionApi {
         handler: Box<dyn Fn(&str) -> Result<(), String> + Send + Sync>,
     );
 
+    /// 注册自定义消息渲染器。
+    /// handler 接收 (role, content)，返回格式化后的 String。
+    /// 返回 None 表示使用默认渲染。
+    fn register_message_renderer(
+        &mut self,
+        handler: Box<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
+    );
+
+    /// 注册编辑器组件 — 注入自定义提示文本到编辑区。
+    /// handler 返回要显示的提示字符串（如状态信息）。
+    fn register_editor_hint(
+        &mut self,
+        handler: Box<dyn Fn() -> String + Send + Sync>,
+    );
+
     /// 获取扩展存储（持久化键值对）。
     fn store(&self) -> &ExtensionStore;
 }
@@ -92,6 +107,8 @@ pub struct HookRegistry {
     pub on_model_switched: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
     pub tools: Vec<ToolEntry>,
     pub commands: Vec<CommandEntry>,
+    pub message_renderers: Vec<Box<dyn Fn(&str, &str) -> Option<String> + Send + Sync>>,
+    pub editor_hints: Vec<Box<dyn Fn() -> String + Send + Sync>>,
 }
 
 /// 注册的工具条目。
@@ -179,6 +196,20 @@ impl ExtensionApi for BasicExtensionApi {
             description: description.to_string(),
             handler,
         });
+    }
+
+    fn register_message_renderer(
+        &mut self,
+        handler: Box<dyn Fn(&str, &str) -> Option<String> + Send + Sync>,
+    ) {
+        self.hooks.message_renderers.push(handler);
+    }
+
+    fn register_editor_hint(
+        &mut self,
+        handler: Box<dyn Fn() -> String + Send + Sync>,
+    ) {
+        self.hooks.editor_hints.push(handler);
     }
 
     fn store(&self) -> &ExtensionStore {

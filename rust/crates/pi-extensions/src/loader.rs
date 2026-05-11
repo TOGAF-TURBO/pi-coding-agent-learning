@@ -47,6 +47,8 @@ impl ExtensionLoader {
             merged.on_model_switched.extend(hooks.on_model_switched);
             merged.tools.extend(hooks.tools);
             merged.commands.extend(hooks.commands);
+            merged.message_renderers.extend(hooks.message_renderers);
+            merged.editor_hints.extend(hooks.editor_hints);
         }
 
         merged

@@ -9,6 +9,7 @@ pub mod extension_tool;
 pub mod find;
 pub mod grep;
 pub mod lsp;
+pub mod lsp_client;
 pub mod read;
 pub mod registry;
 pub mod truncate;

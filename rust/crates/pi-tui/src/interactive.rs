@@ -70,6 +70,8 @@ pub struct InteractiveConfig {
     pub available_models: Vec<(String, String, String)>,
     /// 快捷键配置。
     pub keybindings: KeyBindings,
+    /// 扩展运行时（可选）。
+    pub extension_runner: Option<Arc<pi_extensions::ExtensionRunner>>,
 }
 
 /// Overlay 类型（用于区分回调行为）。
@@ -91,7 +93,7 @@ pub struct AgentContext {
 }
 
 /// 运行交互模式。
-pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
+pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let state = Arc::new(AppState::new(&cfg.model, &cfg.provider));
 
     // Git 状态检测
@@ -203,6 +205,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
 
     // 快捷键配置（由 CLI 层加载 ~/.piso/keybindings.json）
     let keybindings = cfg.keybindings;
+    let extension_runner = cfg.extension_runner.take();
     let mut engine = TuiEngine::init()?;
     let mut input = crate::input::InputEditor::new();
     let mut scroll_offset: usize = 0;
@@ -310,7 +313,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                             // 检查 slash 命令
                             if let Some(cmd) = crate::slash::parse(&text) {
                                 handle_slash_command(
-                                    cmd, &state, &cmd_tx, &session_dir, &mut overlay, &mut overlay_kind,
+                                    cmd, &state, &cmd_tx, &session_dir, &mut overlay, &mut overlay_kind, &extension_runner,
                                 ).await;
                                 continue;
                             }
@@ -647,12 +650,44 @@ async fn handle_slash_command(
     session_dir: &std::path::PathBuf,
     overlay: &mut Option<crate::selector::Selector>,
     overlay_kind: &mut Option<OverlayKind>,
+    extension_runner: &Option<Arc<pi_extensions::ExtensionRunner>>,
 ) {
     use crate::slash::SlashCommand;
 
+    // 先检查扩展注册的命令
+    if let Some(runner) = extension_runner {
+        if let SlashCommand::Unknown(ref name) = cmd {
+            if let Some(entry) = runner.find_command(name) {
+                let args = match &cmd {
+                    SlashCommand::Unknown(a) => a.as_str(),
+                    _ => "",
+                };
+                match (entry.handler)(args) {
+                    Ok(()) => {}
+                    Err(e) => state.push_system(&format!("Command /{} failed: {}", name, e)),
+                }
+                return;
+            }
+        }
+    }
+
     match cmd {
         SlashCommand::Help => {
-            state.push_system(&crate::slash::help_text());
+            let mut help = crate::slash::help_text();
+            // 追加扩展命令
+            if let Some(runner) = extension_runner {
+                let names = runner.command_names();
+                if !names.is_empty() {
+                    help.push_str("\nExtension commands:");
+                    // 需要获取描述 — 通过 find_command
+                    for name in names {
+                        if let Some(cmd_entry) = runner.find_command(name) {
+                            help.push_str(&format!("\n  /{} — {}", name, cmd_entry.description));
+                        }
+                    }
+                }
+            }
+            state.push_system(&help);
         }
         SlashCommand::Clear => {
             state.entries.write().clear();

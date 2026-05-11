@@ -11,6 +11,7 @@ pi-llm = { path = "../pi-llm" }
 pi-session = { path = "../pi-session" }
 pi-tools = { path = "../pi-tools" }
 pi-agent = { path = "../pi-agent" }
+pi-extensions = { path = "../pi-extensions" }
 tokio = { workspace = true }
 ratatui = { workspace = true }
 crossterm = { workspace = true }

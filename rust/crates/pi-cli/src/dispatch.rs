@@ -412,6 +412,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         session: Some(session),
         available_models,
         keybindings,
+        extension_runner: None,
     };
 
     pi_tui::run_interactive(tui_cfg).await
