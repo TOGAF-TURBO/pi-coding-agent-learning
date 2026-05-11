@@ -643,7 +643,7 @@ fn provider_display_name(provider: &str) -> String {
 fn default_api_type(provider: &str) -> &'static str {
     match provider {
         "openai" | "deepseek" | "groq" | "openrouter" | "together" | "fireworks" | "glm"
-        | "zhipu" => "openai-completions",
+        | "zhipu" | "cloudflare" => "openai-completions",
         "google" | "gemini" => "google-gemini",
         _ => "anthropic-messages",
     }

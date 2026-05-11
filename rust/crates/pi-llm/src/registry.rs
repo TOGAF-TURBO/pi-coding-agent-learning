@@ -48,6 +48,10 @@ impl ProviderRegistry {
         let vertex: Arc<dyn LlmDriver> = Arc::new(crate::vertex::VertexDriver::new());
         drivers.insert("vertex".to_string(), vertex);
 
+        // Cloudflare Workers AI
+        let cloudflare: Arc<dyn LlmDriver> = Arc::new(crate::cloudflare::CloudflareDriver::new());
+        drivers.insert("cloudflare".to_string(), cloudflare);
+
         Self {
             drivers: RwLock::new(drivers),
         }

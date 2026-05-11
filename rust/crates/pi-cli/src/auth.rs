@@ -26,6 +26,7 @@ const ENV_KEY_MAP: &[(&str, &str)] = &[
     ("MISTRAL_API_KEY", "mistral"),
     ("XAI_API_KEY", "xai"),
     ("GLM_API_KEY", "glm"),
+    ("CLOUDFLARE_API_KEY", "cloudflare"),
 ];
 
 /// Provider 配置（从 models.json 加载）。

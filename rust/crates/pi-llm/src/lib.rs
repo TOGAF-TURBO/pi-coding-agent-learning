@@ -3,6 +3,7 @@
 //! LLM provider 抽象层 — 流式响应、工具调用、多 provider 路由。
 
 pub mod azure;
+pub mod cloudflare;
 pub mod bedrock;
 pub mod driver;
 pub mod gemini;
