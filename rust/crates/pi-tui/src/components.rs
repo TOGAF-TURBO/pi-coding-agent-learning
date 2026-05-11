@@ -13,7 +13,13 @@ use crate::markdown::render_markdown;
 const MAX_TOOL_LINES: usize = 8;
 
 /// 渲染 header 区域。
-pub fn render_header(f: &mut ratatui::Frame, area: Rect, model: &str, provider: &str) {
+pub fn render_header(f: &mut ratatui::Frame, area: Rect, model: &str, provider: &str, session_id: &str) {
+    // 截断 session ID
+    let short_id = if session_id.len() > 12 {
+        &session_id[..12]
+    } else {
+        session_id
+    };
     let line = Line::from(vec![
         Span::styled(
             " piso ",
@@ -21,6 +27,10 @@ pub fn render_header(f: &mut ratatui::Frame, area: Rect, model: &str, provider: 
         ),
         Span::styled(
             format!("{} ({})", model, provider),
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(
+            format!("  {}", short_id),
             Style::default().fg(Color::DarkGray),
         ),
         Span::styled(
@@ -306,14 +316,14 @@ pub fn render_footer(f: &mut ratatui::Frame, area: Rect, is_running: bool) {
 }
 
 /// 渲染全部五个区域。
-pub fn render_all(f: &mut ratatui::Frame, regions: LayoutRegions, state: &AppState, input: &str, scroll_offset: usize) {
+pub fn render_all(f: &mut ratatui::Frame, regions: LayoutRegions, state: &AppState, input: &str, scroll_offset: usize, session_id: &str) {
     let footer = state.footer.read();
     let model = footer.model.clone();
     let provider = footer.provider.clone();
     let is_running = !matches!(&footer.state, AgentState::Idle);
     drop(footer);
 
-    render_header(f, regions.header, &model, &provider);
+    render_header(f, regions.header, &model, &provider, session_id);
     render_chat(f, regions.chat, state, scroll_offset);
     render_status(f, regions.status, state);
     render_editor(f, regions.editor, input, true, is_running);

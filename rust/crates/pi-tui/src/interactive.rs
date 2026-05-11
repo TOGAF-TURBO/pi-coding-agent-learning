@@ -58,6 +58,8 @@ pub struct InteractiveConfig {
     pub base_url: Option<String>,
     pub cwd: PathBuf,
     pub system_prompt: String,
+    /// 预加载的 session（可能包含历史消息）。
+    pub session: Option<JsonlSession>,
 }
 
 /// 运行交互模式。
@@ -73,10 +75,19 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let system_prompt = cfg.system_prompt.clone();
     let cwd_str = cfg.cwd.to_string_lossy().to_string();
 
-    // 创建唯一 session
+    // 使用预加载 session 或创建新的
     let mgr = SessionManager::new(&session_dir);
     mgr.ensure_dir().await?;
-    let mut session = mgr.create(&cwd_str).await?;
+    let mut session = match cfg.session {
+        Some(s) => s,
+        None => mgr.create(&cwd_str).await?,
+    };
+
+    // 把 session 历史消息加载到 AppState
+    load_history(&session, &state);
+
+    // 缓存 session ID（header 显示用）
+    let session_id_display = session.id().to_string();
 
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Command>();
     let abort_flag = Arc::new(AtomicBool::new(false));
@@ -115,10 +126,11 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let mut scroll_offset: usize = 0;
 
     loop {
+        let sid = session_id_display.clone();
         engine.terminal().draw(|f| {
             let size = f.area();
             let regions = layout::calculate(size, 5);
-            components::render_all(f, regions, &state, input.text(), scroll_offset);
+            components::render_all(f, regions, &state, input.text(), scroll_offset, &sid);
         })?;
 
         let event = match engine.next_event().await {
@@ -280,6 +292,31 @@ async fn run_agent_turn(
 
     // 取回 session（包含所有累积的消息历史）
     *session = agent.into_session();
+
+    // 检查是否需要上下文压缩
+    if pi_agent::compaction::should_compact(session) {
+        // 创建 driver 用于压缩
+        let compaction_driver: Box<dyn LlmDriver> = match api_type {
+            "openai-completions" | "openai-responses" => {
+                Box::new(pi_llm::openai::OpenAiDriver::new())
+            }
+            "google-gemini" | "gemini" => {
+                Box::new(pi_llm::gemini::GeminiDriver::new())
+            }
+            _ => Box::new(pi_llm::providers::AnthropicDriver::new()),
+        };
+        match pi_agent::compaction::compact(
+            session,
+            compaction_driver.as_ref(),
+            model,
+            api_key,
+            base_url,
+        ).await {
+            Ok(true) => tracing::info!("[compaction] completed"),
+            Ok(false) => {}
+            Err(e) => tracing::warn!("[compaction] failed: {e}"),
+        }
+    }
 }
 
 /// 构建工具注册表。
@@ -297,4 +334,71 @@ fn make_tools(cwd: &std::path::Path) -> ToolRegistry {
 
 fn abort_flag_clear(flag: &Arc<AtomicBool>) {
     flag.store(false, Ordering::SeqCst);
+}
+
+/// 从 session 历史加载消息到 AppState（用于 --continue/--session）。
+fn load_history(session: &JsonlSession, state: &AppState) {
+    use pi_types::session::SessionEntry;
+    for entry in session.entries() {
+        match entry {
+            SessionEntry::Message(msg) => {
+                // 从 content 数组提取文本
+                let text = extract_text_from_content(&msg.content);
+                if text.is_empty() {
+                    continue;
+                }
+                match msg.role.as_str() {
+                    "user" => {
+                        // 检查是否是工具结果（content 包含 tool_result）
+                        if has_tool_results(&msg.content) {
+                            // 提取工具结果
+                            for block in msg.content.as_array().into_iter().flatten() {
+                                if block.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
+                                    let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
+                                    let output = block.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                                    let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                                    state.push_tool_result(name, output, is_error);
+                                }
+                            }
+                        } else {
+                            state.push_user(&text);
+                        }
+                    }
+                    "assistant" => {
+                        state.push_assistant_delta(&text);
+                        state.finish_assistant();
+                    }
+                    _ => {}
+                }
+            }
+            _ => {}
+        }
+    }
+}
+
+/// 从 JSON content 数组提取纯文本。
+fn extract_text_from_content(content: &serde_json::Value) -> String {
+    content.as_array()
+        .map(|arr| {
+            arr.iter()
+                .filter_map(|block| {
+                    if block.get("type").and_then(|v| v.as_str()) == Some("text") {
+                        block.get("text").and_then(|v| v.as_str()).map(|s| s.to_string())
+                    } else {
+                        None
+                    }
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+        })
+        .unwrap_or_default()
+}
+
+/// 检查 content 是否包含 tool_result 块。
+fn has_tool_results(content: &serde_json::Value) -> bool {
+    content.as_array()
+        .map(|arr| arr.iter().any(|block| {
+            block.get("type").and_then(|v| v.as_str()) == Some("tool_result")
+        }))
+        .unwrap_or(false)
 }

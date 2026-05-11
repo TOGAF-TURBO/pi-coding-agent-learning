@@ -348,6 +348,9 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         }
     }
 
+    // 解析会话（--continue / --session / --resume / 新建）
+    let session = resolve_session(&cli, &cfg, &cwd, &cwd_str).await?;
+
     let tui_cfg = pi_tui::InteractiveConfig {
         model,
         provider,
@@ -356,6 +359,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         base_url: effective_base_url,
         cwd,
         system_prompt: prompt_builder.build(),
+        session: Some(session),
     };
 
     pi_tui::run_interactive(tui_cfg).await
