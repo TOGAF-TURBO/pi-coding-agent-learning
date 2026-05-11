@@ -388,7 +388,7 @@ fn build_openai_request(req: &CompletionRequest) -> Value {
 // ─── SSE 解析器 ────────────────────────────────────────────────
 
 /// OpenAI 风格的 SSE 事件。
-enum SseEvent {
+pub(crate) enum SseEvent {
     /// `data: {...}` 行内容。
     Data(String),
     /// 解析错误。
@@ -396,20 +396,20 @@ enum SseEvent {
 }
 
 /// OpenAI SSE 解析器。
-struct OpenAiSseParser {
+pub(crate) struct OpenAiSseParser {
     buffer: String,
 }
 
 impl OpenAiSseParser {
-    fn new() -> Self {
+    pub(crate) fn new() -> Self {
         Self { buffer: String::new() }
     }
 
-    fn feed(&mut self, bytes: &[u8]) {
+    pub(crate) fn feed(&mut self, bytes: &[u8]) {
         self.buffer.push_str(&String::from_utf8_lossy(bytes));
     }
 
-    fn next_event(&mut self) -> Option<SseEvent> {
+    pub(crate) fn next_event(&mut self) -> Option<SseEvent> {
         loop {
             let line_end = self.buffer.find('\n')?;
             let line = self.buffer[..line_end].trim_end_matches('\r').to_string();

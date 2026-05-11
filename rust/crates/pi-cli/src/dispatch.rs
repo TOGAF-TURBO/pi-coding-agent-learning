@@ -9,9 +9,14 @@ use crate::auth::AuthStorage;
 use crate::config;
 
 use pi_agent::loop_engine::AgentLoop;
+use pi_agent::context;
+use pi_agent::skills;
+use pi_agent::system_prompt::SystemPromptBuilder;
 use pi_llm::driver::LlmDriver;
 use pi_llm::openai::OpenAiDriver;
+use pi_llm::gemini::GeminiDriver;
 use pi_llm::providers::AnthropicDriver;
+use pi_session::manager::SessionManager;
 use pi_session::JsonlSession;
 use pi_tools::bash::BashTool;
 use pi_tools::read::ReadTool;
@@ -35,6 +40,7 @@ async fn async_main(cli: Cli) -> Result<()> {
         AppMode::Print => run_print(cli).await,
         AppMode::Rpc => run_rpc(cli).await,
         AppMode::ListModels => run_list_models(cli).await,
+        AppMode::ListSessions => run_list_sessions().await,
     }
 }
 
@@ -44,6 +50,7 @@ enum AppMode {
     Print,
     Rpc,
     ListModels,
+    ListSessions,
 }
 
 fn resolve_mode(cli: &Cli) -> AppMode {
@@ -52,6 +59,9 @@ fn resolve_mode(cli: &Cli) -> AppMode {
     }
     if cli.list_models.is_some() {
         return AppMode::ListModels;
+    }
+    if cli.list_sessions {
+        return AppMode::ListSessions;
     }
     match cli.mode.as_deref() {
         Some("rpc") => AppMode::Rpc,
@@ -79,7 +89,7 @@ async fn run_print(cli: Cli) -> Result<()> {
     let api_key = cli.api_key.as_deref()
         .or_else(|| auth.get_key(provider))
         .ok_or_else(|| anyhow!(
-            "No API key found for provider '{}'. Set {}_API_KEY or configure ~/.pi/agent/models.json",
+            "No API key found for provider '{}'. Set {}_API_KEY or configure ~/.piso/models.json",
             provider,
             provider.to_uppercase().replace('-', "_"),
         ))?;
@@ -89,7 +99,7 @@ async fn run_print(cli: Cli) -> Result<()> {
         .or(cfg.model.as_deref())
         .unwrap_or("claude-sonnet-4-20250514");
 
-    // 从 models.json 获取 provider 配置（baseUrl、api 类型）
+    // 从 models.json 获取 provider 配置
     let provider_config = auth.get_provider(provider);
     let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or("anthropic-messages");
     let base_url = provider_config.and_then(|c| c.base_url.clone());
@@ -97,6 +107,7 @@ async fn run_print(cli: Cli) -> Result<()> {
     // 根据 API 类型创建对应的 LLM driver
     let driver: Box<dyn LlmDriver> = match api_type {
         "openai-completions" | "openai-responses" => Box::new(OpenAiDriver::new()),
+        "google-gemini" | "gemini" => Box::new(GeminiDriver::new()),
         _ => Box::new(AnthropicDriver::new()),
     };
 
@@ -112,7 +123,6 @@ async fn run_print(cli: Cli) -> Result<()> {
             }
         })
     } else {
-        // Anthropic 风格的 base URL
         base_url
     };
 
@@ -128,21 +138,52 @@ async fn run_print(cli: Cli) -> Result<()> {
     }
 
     // 创建或恢复会话
-    let session = if cli.no_session {
-        let tmp = tempfile::tempdir()?;
-        let path = tmp.path().join("session.jsonl");
-        // 使用 into_path 防止 TempDir drop 时删除目录
-        let _tmp_persist = tmp.into_path();
-        JsonlSession::create(&path, &cwd_str).await?
-    } else {
-        let session_dir = config::session_dir(&cfg)
-            .unwrap_or_else(|| cwd.join(".pi").join("sessions"));
-        let session_id = format!("{:08x}", std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)?
-            .as_nanos() as u32);
-        let session_path = session_dir.join(&session_id).join("session.jsonl");
-        JsonlSession::create(&session_path, &cwd_str).await?
-    };
+    let session = resolve_session(&cli, &cfg, &cwd, &cwd_str).await?;
+
+    // 构建系统提示
+    let mut prompt_builder = SystemPromptBuilder::new(&cwd_str);
+    if !cli.no_tools {
+        prompt_builder = prompt_builder.with_tool_guides();
+    }
+    if let Some(sp) = &cli.system_prompt {
+        prompt_builder = prompt_builder.with_custom_prompt(sp);
+    }
+    if let Some(append) = &cli.append_system_prompt {
+        for extra in append {
+            prompt_builder = prompt_builder.append(extra);
+        }
+    }
+
+    // 加载上下文文件（AGENTS.md 等）
+    if !cli.no_context_files {
+        let agent_dir = config_dir.as_deref();
+        let ctx_files = context::load_project_context_files(
+            &cwd,
+            agent_dir.as_deref(),
+        );
+        if !ctx_files.is_empty() {
+            for ctx in &ctx_files {
+                eprintln!("[context] {}", ctx.path.display());
+            }
+            prompt_builder = prompt_builder.append(
+                context::format_context_for_prompt(&ctx_files)
+            );
+        }
+    }
+
+    // 加载技能（~/.piso/skills/ + .piso/skills/）
+    if !cli.no_skills {
+        let global_skills = config::skills_dir();
+        let loaded_skills = skills::load_skills(&cwd, global_skills.as_deref());
+        if !loaded_skills.is_empty() {
+            for s in &loaded_skills {
+                eprintln!("[skill] {} ({})", s.name, s.source);
+            }
+            prompt_builder = prompt_builder.append(
+                skills::format_skills_for_prompt(&loaded_skills)
+            );
+        }
+    }
 
     // 构建用户消息
     let user_message = cli.messages.join(" ");
@@ -158,7 +199,8 @@ async fn run_print(cli: Cli) -> Result<()> {
 
     // 创建 Agent 循环
     let mut agent = AgentLoop::new(session, driver, tools, model)
-        .with_api_key(api_key);
+        .with_api_key(api_key)
+        .with_system_prompt(prompt_builder.build());
 
     if let Some(url) = effective_base_url {
         agent = agent.with_base_url(url);
@@ -171,6 +213,73 @@ async fn run_print(cli: Cli) -> Result<()> {
     print!("{}", output.text);
 
     Ok(())
+}
+
+/// 解析会话：--continue / --session / 新建。
+async fn resolve_session(
+    cli: &Cli,
+    cfg: &crate::config::Config,
+    cwd: &std::path::Path,
+    cwd_str: &str,
+) -> Result<JsonlSession> {
+    let session_dir = config::session_dir(cfg)
+        .unwrap_or_else(|| cwd.join(".pi").join("sessions"));
+
+    if cli.no_session {
+        let tmp = tempfile::tempdir()?;
+        let path = tmp.path().join("session.jsonl");
+        let _tmp_persist = tmp.keep();
+        return JsonlSession::create(&path, cwd_str).await;
+    }
+
+    let mgr = SessionManager::new(&session_dir);
+    mgr.ensure_dir().await?;
+
+    // --session <id>: 打开指定会话
+    if let Some(session_id) = &cli.session {
+        return mgr.open(session_id).await;
+    }
+
+    // --continue: 恢复最近的会话
+    if cli.r#continue {
+        return mgr.continue_last().await;
+    }
+
+    // --resume: 列出会话供选择
+    if cli.resume {
+        let sessions = mgr.list().await?;
+        if sessions.is_empty() {
+            bail!("No previous sessions found");
+        }
+        eprintln!("Recent sessions:");
+        for s in sessions.iter().take(5) {
+            let indicator = if s.is_today { "*" } else { " " };
+            eprintln!("  {} {} ({} messages, cwd: {})", indicator, s.id, s.message_count, s.cwd);
+        }
+        return mgr.open(&sessions[0].id).await;
+    }
+
+    // --fork <message-id>: 从指定消息分叉新会话
+    if let Some(fork_at) = &cli.fork {
+        let source = mgr.continue_last().await?;
+        let entries = source.entries();
+
+        // 查找分叉点
+        let fork_idx = entries.iter().position(|e| e.id() == fork_at)
+            .ok_or_else(|| anyhow!("Message '{}' not found in session", fork_at))?;
+
+        // 创建新会话，复制分叉点之前的条目
+        let mut new_session = mgr.create(cwd_str).await?;
+        for entry in &entries[..=fork_idx] {
+            new_session.append(entry.clone()).await?;
+        }
+
+        eprintln!("Forked session at message '{}' ({} entries copied)", fork_at, fork_idx + 1);
+        return Ok(new_session);
+    }
+
+    // 默认：创建新会话
+    mgr.create(cwd_str).await
 }
 
 async fn run_interactive(_cli: Cli) -> Result<()> {
@@ -199,13 +308,38 @@ async fn run_list_models(_cli: Cli) -> Result<()> {
     if auth.configured_providers().is_empty() {
         let available = auth.available_providers();
         if available.is_empty() {
-            println!("  No providers configured. Set ANTHROPIC_API_KEY or configure ~/.pi/agent/models.json");
+            println!("  No providers configured. Set ANTHROPIC_API_KEY or configure ~/.piso/models.json");
         } else {
             println!("Providers with API keys from environment:");
             for name in available {
                 println!("  {name}");
             }
         }
+    }
+
+    Ok(())
+}
+
+async fn run_list_sessions() -> Result<()> {
+    let cwd = env::current_dir()?;
+    let cfg = config::load_config(Some(&cwd));
+    let session_dir = config::session_dir(&cfg)
+        .unwrap_or_else(|| cwd.join(".pi").join("sessions"));
+
+    let mgr = SessionManager::new(&session_dir);
+    let sessions = mgr.list().await?;
+
+    if sessions.is_empty() {
+        println!("No sessions found.");
+        return Ok(());
+    }
+
+    println!("Sessions ({} total):", sessions.len());
+    println!("{:<25} {:<6} {}", "ID", "Msgs", "CWD");
+    println!("{}", "-".repeat(60));
+    for s in &sessions {
+        let tag = if s.is_today { "*" } else { " " };
+        println!("{} {:<24} {:<6} {}", tag, s.id, s.message_count, s.cwd);
     }
 
     Ok(())

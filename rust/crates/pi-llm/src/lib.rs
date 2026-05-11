@@ -8,6 +8,7 @@ pub mod transform;
 pub mod registry;
 pub mod providers;
 pub mod openai;
+pub mod gemini;
 
 pub use driver::{CompletionRequest, LlmDriver, StreamEvent};
 pub use registry::ProviderRegistry;

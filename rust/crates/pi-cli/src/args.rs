@@ -88,6 +88,10 @@ pub struct Cli {
     #[arg(long)]
     pub list_models: Option<Option<String>>,
 
+    /// List previous sessions.
+    #[arg(long)]
+    pub list_sessions: bool,
+
     /// Run offline (skip version check).
     #[arg(long)]
     pub offline: bool,

@@ -1,4 +1,10 @@
 //! 认证与 Provider 配置管理。
+//!
+//! 认证来源优先级：
+//! 1. 环境变量（`ANTHROPIC_API_KEY` 等）
+//! 2. `~/.piso/auth.json`（piso 专用）
+//! 3. `~/.piso/models.json`（piso 专用 models 配置）
+//! 4. `~/.pi/agent/models.json`（兼容 TS 版本，只读）
 
 use std::collections::HashMap;
 use std::path::Path;
@@ -58,7 +64,7 @@ impl AuthStorage {
         }
 
         if let Some(dir) = config_dir {
-            // 2. auth.json
+            // 2. ~/.piso/auth.json
             let auth_path = dir.join("auth.json");
             if auth_path.exists() {
                 if let Ok(content) = std::fs::read_to_string(&auth_path) {
@@ -70,31 +76,18 @@ impl AuthStorage {
                 }
             }
 
-            // 3. models.json 中的 provider 配置
-            let models_path = dir.join("agent").join("models.json");
+            // 3. ~/.piso/models.json
+            let models_path = dir.join("models.json");
             if models_path.exists() {
-                if let Ok(content) = std::fs::read_to_string(&models_path) {
-                    if let Ok(doc) = serde_json::from_str::<serde_json::Value>(&content) {
-                        if let Some(provs) = doc.get("providers").and_then(|p| p.as_object()) {
-                            for (name, config) in provs {
-                                let pc = ProviderConfig {
-                                    name: name.clone(),
-                                    api: config.get("api").and_then(|v| v.as_str()).unwrap_or("openai-completions").to_string(),
-                                    base_url: config.get("baseUrl").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                                    api_key: config.get("apiKey").and_then(|v| v.as_str()).map(|s| s.to_string()),
-                                };
+                load_models_json(&models_path, &mut keys, &mut providers);
+            }
 
-                                // 注册 API Key
-                                if let Some(key) = &pc.api_key {
-                                    if !key.is_empty() {
-                                        keys.insert(name.clone(), key.clone());
-                                    }
-                                }
-
-                                providers.insert(name.clone(), pc);
-                            }
-                        }
-                    }
+            // 4. 兼容：~/.pi/agent/models.json（TS 版本配置，只读）
+            let ts_models = dirs::home_dir()
+                .map(|h| h.join(".pi").join("agent").join("models.json"));
+            if let Some(ts_path) = ts_models {
+                if ts_path.exists() {
+                    load_models_json(&ts_path, &mut keys, &mut providers);
                 }
             }
         }
@@ -120,5 +113,40 @@ impl AuthStorage {
     /// 列出所有已配置的 provider（来自 models.json）。
     pub fn configured_providers(&self) -> Vec<String> {
         self.providers.keys().cloned().collect()
+    }
+}
+
+/// 从 models.json 加载 provider 配置。
+fn load_models_json(
+    path: &Path,
+    keys: &mut HashMap<String, String>,
+    providers: &mut HashMap<String, ProviderConfig>,
+) {
+    let Ok(content) = std::fs::read_to_string(path) else { return };
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(&content) else { return };
+    let Some(provs) = doc.get("providers").and_then(|p| p.as_object()) else { return };
+
+    for (name, config) in provs {
+        let pc = ProviderConfig {
+            name: name.clone(),
+            api: config.get("api")
+                .and_then(|v| v.as_str())
+                .unwrap_or("openai-completions")
+                .to_string(),
+            base_url: config.get("baseUrl")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+            api_key: config.get("apiKey")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
+        };
+
+        if let Some(key) = &pc.api_key {
+            if !key.is_empty() {
+                keys.insert(name.clone(), key.clone());
+            }
+        }
+
+        providers.insert(name.clone(), pc);
     }
 }

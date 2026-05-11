@@ -18,6 +18,8 @@ use pi_llm::driver::{CompletionRequest, LlmDriver, StreamEvent};
 use pi_session::JsonlSession;
 use pi_tools::registry::ToolRegistry;
 use pi_types::message::{ContentBlock, Message, StopReason};
+
+use crate::system_prompt::SystemPromptBuilder;
 use pi_types::session::MessageEntry;
 use pi_types::tool::ToolResult;
 
@@ -72,7 +74,9 @@ impl AgentLoop {
             session,
             driver,
             tools,
-            system_prompt: build_default_system_prompt(),
+            system_prompt: SystemPromptBuilder::new(".")
+                .with_tool_guides()
+                .build(),
             model: model_name,
             max_tokens: 16384,
             max_iterations: 50,
@@ -418,10 +422,4 @@ fn generate_id() -> String {
         .unwrap()
         .as_nanos();
     format!("{:08x}", (t as u32) ^ ((t >> 32) as u32))
-}
-
-fn build_default_system_prompt() -> String {
-    "You are a helpful coding assistant running in the user's terminal. \
-     You can execute commands and edit files to help the user with their tasks. \
-     Be concise and direct.".to_string()
 }

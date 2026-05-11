@@ -6,6 +6,7 @@ use std::sync::Arc;
 use parking_lot::RwLock;
 
 use crate::driver::LlmDriver;
+use crate::gemini::GeminiDriver;
 use crate::openai::OpenAiDriver;
 use crate::providers::AnthropicDriver;
 
@@ -28,6 +29,11 @@ impl ProviderRegistry {
         for name in &["glm", "deepseek", "groq", "openrouter", "together", "fireworks", "mistral", "xai"] {
             drivers.insert((*name).to_string(), Arc::new(OpenAiDriver::new()));
         }
+
+        // Google Gemini
+        let google: Arc<dyn LlmDriver> = Arc::new(GeminiDriver::new());
+        drivers.insert("google".to_string(), google);
+        drivers.insert("gemini".to_string(), Arc::new(GeminiDriver::new()));
 
         Self {
             drivers: RwLock::new(drivers),

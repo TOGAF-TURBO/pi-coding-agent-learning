@@ -73,9 +73,14 @@ impl JsonlSession {
 
     /// 创建新的 JSONL 会话文件。
     pub async fn create(path: impl AsRef<Path>, cwd: impl Into<String>) -> Result<Self> {
-        let path = path.as_ref().to_path_buf();
         let id = Self::generate_id();
-        let header = SessionHeader::new(&id, cwd);
+        Self::create_with_id(path, cwd, &id).await
+    }
+
+    /// 创建新会话文件，使用指定的 ID。
+    pub async fn create_with_id(path: impl AsRef<Path>, cwd: impl Into<String>, id: &str) -> Result<Self> {
+        let path = path.as_ref().to_path_buf();
+        let header = SessionHeader::new(id, cwd);
 
         if let Some(parent) = path.parent() {
             fs::create_dir_all(parent).await?;
