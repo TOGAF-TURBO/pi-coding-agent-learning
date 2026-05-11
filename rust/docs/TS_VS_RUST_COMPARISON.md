@@ -1,7 +1,7 @@
 # TypeScript (pi) vs Rust (piso) CLI 功能对比
 
 > 仅从 CLI 功能角度对比，不含性能/体积等非功能性差异。
-> 最后更新：2026-05-11（commit 0e21cea）
+> 最后更新：2026-05-11（commit 2bba873）
 
 ---
 
@@ -31,11 +31,11 @@
 | `--tools` | ✅ 逗号分隔白名单 | ✅ 逗号分隔白名单 | 一致 |
 | `--extension / -e` | ✅ | ✅ | 一致 |
 | `--no-extensions` | ✅ | ✅ | 一致 |
-| `--skill` | ✅ 加载指定 skill | ❌ | **TS 多了此参数** |
+| `--skill` | ✅ 加载指定 skill | ✅ | 一致 |
 | `--no-skills` | ✅ | ✅ | 一致 |
-| `--prompt-template` | ✅ | ❌ | **TS 多了此参数** |
+| `--prompt-template` | ✅ | ✅ | 一致 |
 | `--no-prompt-templates` | ✅ | ✅ | 一致 |
-| `--theme` | ✅ 加载指定 theme | ❌ | **TS 多了此参数** |
+| `--theme` | ✅ 加载指定 theme | ✅ | 一致 |
 | `--no-themes` | ✅ | ❌ | **TS 多了此参数** |
 | `--no-context-files` | ✅ | ✅ | 一致 |
 | `--list-models` | ✅ 支持模糊搜索 | ✅ | **TS 多了搜索过滤** |
@@ -45,9 +45,9 @@
 | `--init` | ❌ | ✅ | **piso 多了配置初始化** |
 | `@file` 文件引用 | ✅ `@prompt.md @image.png` | ✅ `@file.txt` 文本内联 | **TS 多了图片支持** |
 | 子命令 | ✅ install/remove/update/list/config | ✅ completions | **TS 有扩展管理子命令** |
-| `unknownFlags` | ✅ 扩展可注册自定义 flag | ✅ `register_shortcut()` | TS 更灵活 |
+| `unknownFlags` | ✅ 扩展可注册自定义 flag | ✅ `register_flag()` | 一致 |
 
-**小结**：TS 有 22 个参数选项，piso 有 21 个。TS 独有约 7 个参数，piso 独有 4 个。
+**小结**：TS 有 22 个参数选项，piso 有 24 个。TS 独有约 2 个参数（`--mode`、`--no-themes`），piso 独有 5 个。
 
 ---
 
@@ -58,7 +58,7 @@
 | Anthropic Claude | ✅ 原生 SSE | ✅ 原生 SSE | 一致 |
 | OpenAI GPT | ✅ completions + responses | ✅ completions + responses | 一致 |
 | Google Gemini | ✅ | ✅ | 一致 |
-| Google Vertex | ✅ | ❌ | **TS 独有** |
+| Google Vertex | ✅ | ✅ Gemini 格式 + service account | 一致（piso 简化 token） |
 | Azure OpenAI | ✅ responses | ✅ 部署映射 + api-key 头部 | 一致 |
 | Amazon Bedrock | ✅ converse-stream | ✅ converse-stream + AWS env | 一致（piso 简化 Sigv4） |
 | Mistral | ✅ | ✅ (via openai) | piso 通过兼容协议覆盖 |
@@ -73,7 +73,7 @@
 | GLM / 其他 OpenAI 兼容 | ✅ | ✅ | 一致 |
 | 自定义 provider (扩展注册) | ✅ `registerProvider()` | ✅ `register_provider()` | 一致 |
 
-**小结**：TS 有 ~17 个独立 provider 实现，piso 有 6 个 driver（Anthropic、OpenAI completions、OpenAI responses、Gemini、Azure、Bedrock）覆盖 ~30+ provider。
+**小结**：TS 有 ~17 个独立 provider 实现，piso 有 7 个 driver（Anthropic、OpenAI completions、OpenAI responses、Gemini、Azure、Bedrock、Vertex）覆盖 ~30+ provider。
 
 ---
 
@@ -109,9 +109,11 @@
 | `/fork` | ✅ | ✅ 占位 | 一致 |
 | `/session` | ✅ 显示会话统计 | ✅ | 一致 |
 | `/name` | ✅ 设置会话名 | ✅ | 一致 |
-| `/import` | ✅ 导入 JSONL 文件 | ❌ | **TS 独有** |
+| `/import` | ✅ 导入 JSONL 文件 | ✅ | 一致 |
+| `/clone` | ✅ | ✅ | 一致 |
+| `/import` | ✅ 导入 JSONL 文件 | ✅ | 一致 |
+| `/clone` | ✅ | ✅ | 一致 |
 | `/share` | ✅ GitHub Gist 分享 | ❌ | **TS 独有** |
-| `/clone` | ✅ | ❌ | **TS 独有** |
 | `/tree` | ✅ 会话分支导航 | ❌ | **TS 独有** |
 | `/resume` | ✅ | ❌ | **TS 独有** |
 | `/settings` | ✅ 打开设置 UI | ❌ | **TS 独有** |
@@ -128,7 +130,7 @@
 | `/sessions` | ❌ | ✅ | **piso 独有** |
 | `/branch` | ❌ | ✅ | **piso 独有** |
 
-**小结**：TS 有 21 个 slash 命令，piso 有 17 个。TS 独有 10 个，piso 独有 6 个。
+**小结**：TS 有 21 个 slash 命令，piso 有 19 个。TS 独有 8 个，piso 独有 6 个。
 
 ---
 
@@ -178,7 +180,7 @@
 | 消息渲染器 | ✅ 按类型注册 | ✅ 全局拦截 | TS 更灵活 |
 | 编辑器 Widget | ✅ above/below 布局 | ✅ hint 文本 | **TS 更丰富** |
 | 快捷键注册 | ✅ `registerShortcut()` | ✅ `register_shortcut()` | 一致 |
-| CLI flag 注册 | ✅ `registerFlag()` | ❌ | **TS 独有** |
+| CLI flag 注册 | ✅ `registerFlag()` | ✅ `register_flag()` | 一致 |
 | Provider 注册 | ✅ `registerProvider()` | ✅ `register_provider()` | 一致 |
 | 消息发送 | ✅ sendMessage/sendUserMessage | ✅ send_message/send_user_message | 一致 |
 | 会话元数据 | ✅ setName/setLabel | ✅ set_session_name/set_label | 一致 |
@@ -205,9 +207,11 @@
 | compact | ✅ | ✅ |
 | bash | ✅ | ✅ |
 | get_commands | ✅ | ✅ |
-| set_thinking_level | ✅ | ❌ |
-| set_auto_compaction | ✅ | ❌ |
-| set_auto_retry | ✅ | ❌ |
+| set_thinking_level | ✅ | ✅ |
+| set_auto_compaction | ✅ | ✅ |
+| set_auto_retry | ✅ | ✅ |
+
+**小结**：TS 和 piso 均有 16 个 RPC 命令，完全对齐。
 
 **小结**：TS 有 16 个 RPC 命令，piso 有 13 个。piso 缺少 3 个（thinking level、auto compaction、auto retry）。
 
@@ -225,10 +229,10 @@
 | 会话分支 | ✅ tree 导航 | ✅ create_branch | TS 更丰富 |
 | 会话压缩 | ✅ | ✅ | 一致 |
 | 会话导出 HTML | ✅ | ✅ | 一致 |
-| 会话导入 JSONL | ✅ | ❌ | **TS 独有** |
+| 会话导入 JSONL | ✅ | ✅ /import | 一致 |
 | 会话分享 | ✅ GitHub Gist | ❌ | **TS 独有** |
 | 会话命名 | ✅ | ✅ /name | 一致 |
-| 会话克隆 | ✅ | ❌ | **TS 独有** |
+| 会话克隆 | ✅ | ✅ /clone | 一致 |
 | 会话搜索 | ❌ | ✅ /find + /grep | **piso 独有** |
 | @file 引用 | ✅ | ✅ 文本内联 | 一致 |
 
@@ -248,36 +252,31 @@
 
 | 维度 | TS (pi) | Rust (piso) | 差距 |
 |------|---------|-------------|------|
-| CLI 参数 | 22 个 | 21 个 | TS 多 1 个 |
-| LLM Provider | ~17 独立实现 | 6 driver + 30+ 兼容 | TS 多 Vertex, Cloudflare, Copilot |
+| CLI 参数 | 22 个 | 24 个 | piso 多 2 个 |
+| LLM Provider | ~17 独立实现 | 7 driver + 30+ 兼容 | TS 多 Cloudflare, Copilot OAuth |
 | 内置工具 | 7 个 | 7 个 | 一致 |
-| Slash 命令 | 21 个 | 17 个 | TS 多 4 个 |
+| Slash 命令 | 21 个 | 19 个 | TS 多 2 个 |
 | TUI 组件 | ~35 个文件 | ~15 个文件 | TS 多 OAuth 登录, diff 查看器, 图片 |
-| 扩展 API | 30+ 事件 + 10+ 注册 | 15+ 事件 + 9 注册 | TS 多 flag 注册, exec |
-| RPC 命令 | 16 个 | 13 个 | TS 多 3 个 |
-| 单元测试 | ~150+ | 244 | piso 更多 |
+| 扩展 API | 30+ 事件 + 10+ 注册 | 15+ 事件 + 10 注册 | TS 多 exec, 更多事件粒度 |
+| RPC 命令 | 16 个 | 16 个 | 一致 |
+| 单元测试 | ~150+ | 260 | piso 更多 |
 | 独有功能 | — | — | `/cost`, `/find`, `/grep`, Tab 补全, Git 状态, Ctrl+R 重试, `--init`, shell completions |
 
 ### piso 相对 TS 版的**剩余缺失**：
 
-**P1 (重要缺失)**:
-1. `/import` JSONL 导入
-2. `/clone` 会话克隆
-3. 更多 provider 原生实现（Vertex, Cloudflare, Copilot OAuth）
-4. 交互式 Diff 查看器
-5. 图片粘贴/显示
-6. `register_flag()` 扩展 API
-7. RPC: set_thinking_level, set_auto_compaction, set_auto_retry
-
 **P2 (锦上添花)**:
-8. `/share` Gist 分享
-9. `/tree` 分支导航
-10. OAuth 登录 UI
-11. `/settings` 设置 UI
-12. `/hotkeys` 快捷键列表
-13. `/changelog` 更新日志
-14. `--mode` 显式模式切换
-15. `--skill` / `--theme` / `--prompt-template` 选项
-16. JSONL 导出格式
-17. 终端图片显示
-18. JS/WASM 动态扩展加载
+1. `/share` Gist 分享
+2. `/tree` 分支导航
+3. `/resume` 恢复会话
+4. `/settings` 设置 UI
+5. `/hotkeys` 快捷键列表
+6. `/changelog` 更新日志
+7. OAuth 登录 UI
+8. 交互式 Diff 查看器
+9. 图片粘贴/显示
+10. `--mode` 显式模式切换
+11. JSONL 导出格式
+12. 终端图片显示
+13. JS/WASM 动态扩展加载
+14. Cloudflare Workers AI provider
+15. GitHub Copilot OAuth provider
