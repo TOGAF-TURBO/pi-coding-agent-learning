@@ -151,13 +151,21 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
             match cmd {
                 Command::Send { text } => {
                     abort_flag_clear(&agent_abort);
-                    // 解析 @file 引用
-                    let resolved = pi_tools::fileref::resolve_file_refs(
+                    // 解析 @file 引用（包括图片）
+                    let (resolved, file_refs) = pi_tools::fileref::resolve_file_refs(
                         &text,
                         &std::path::PathBuf::from(&agent_ctx.cwd),
-                    )
-                    .0;
-                    run_agent_turn(&resolved, &mut session, &agent_state, &tools, &agent_ctx).await;
+                    );
+                    // 图片文件：追加描述到消息
+                    let final_text = if file_refs.iter().any(|r| r.image.is_some()) {
+                        let images: Vec<_> = file_refs.iter()
+                            .filter_map(|r| r.image.as_ref().map(|img| format!("[image: {} ({})]", r.path, img.mime_type)))
+                            .collect();
+                        format!("{}\n\nAttached images: {}", resolved, images.join(", "))
+                    } else {
+                        resolved
+                    };
+                    run_agent_turn(&final_text, &mut session, &agent_state, &tools, &agent_ctx).await;
                 }
                 Command::Abort => {
                     agent_abort.store(true, Ordering::SeqCst);

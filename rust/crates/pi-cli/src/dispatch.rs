@@ -275,7 +275,16 @@ async fn run_print(cli: Cli) -> Result<()> {
     agent = agent.with_stream_sink(print_sink);
 
     // 解析 @file 引用
-    let user_message = pi_tools::fileref::resolve_file_refs(&user_message, &cwd).0;
+    let (user_message, file_refs) = pi_tools::fileref::resolve_file_refs(&user_message, &cwd);
+    // 图片文件：追加描述到消息
+    let user_message = if file_refs.iter().any(|r| r.image.is_some()) {
+        let images: Vec<_> = file_refs.iter()
+            .filter_map(|r| r.image.as_ref().map(|img| format!("[image: {} ({})]", r.path, img.mime_type)))
+            .collect();
+        format!("{}\n\nAttached images: {}", user_message, images.join(", "))
+    } else {
+        user_message
+    };
 
     // 运行 agent
     let output = agent.run(&user_message).await?;

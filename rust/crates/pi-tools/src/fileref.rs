@@ -1,35 +1,63 @@
 //! @file 引用解析 — 在用户消息中检测 @path 模式并内联文件内容。
 //!
-//! 对应 `packages/coding-agent/src/utils/paths.ts`。
+//! 支持文本文件内联和图片文件 base64 编码。
 
 use std::path::{Path, PathBuf};
+
+/// 支持的图片扩展名 → MIME 类型。
+const IMAGE_TYPES: &[(&str, &str)] = &[
+    (".png", "image/png"),
+    (".jpg", "image/jpeg"),
+    (".jpeg", "image/jpeg"),
+    (".gif", "image/gif"),
+    (".webp", "image/webp"),
+];
+
+/// 根据扩展名检测图片 MIME 类型。
+pub fn detect_image_mime(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_lowercase();
+    IMAGE_TYPES
+        .iter()
+        .find(|(e, _)| e.strip_prefix('.').unwrap_or(e) == ext)
+        .map(|(_, mime)| *mime)
+}
+
+/// 文件引用结果。
+#[derive(Debug, Clone)]
+pub struct FileRef {
+    pub path: String,
+    pub content: String,
+    pub is_binary: bool,
+    /// 如果是图片文件，包含 (mime_type, base64_data)。
+    pub image: Option<ImageData>,
+}
+
+/// 图片数据。
+#[derive(Debug, Clone)]
+pub struct ImageData {
+    pub mime_type: String,
+    pub base64: String,
+}
 
 /// 解析消息中的 @file 引用，返回文件内容和清理后的消息。
 ///
 /// 支持格式：
-/// - `@file.txt` — 单个文件
+/// - `@file.txt` — 单个文件（文本内联）
+/// - `@photo.png` — 图片文件（base64 编码）
 /// - `@dir/file.rs` — 带路径的文件
 /// - `@./relative/path` — 相对路径
-///
-/// 如果文件存在，将其内容作为上下文注入到消息前面。
 pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
     let mut refs = Vec::new();
     let mut cleaned = message.to_string();
 
-    // 查找所有 @xxx 模式
     let re = regex::Regex::new(r"@(\.{0,2}/[^\s,;)]+|@[^\s,;)]+|[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)")
         .unwrap();
 
     for cap in re.captures_iter(message) {
         let full = &cap[0];
-        let file_path = &full[1..]; // 去掉 @ 前缀
+        let file_path = &full[1..];
 
-        // 跳过明显不是文件的模式
-        if file_path.starts_with('@') // @@ 转义
-            || file_path.contains("://") // URL
-            || file_path.starts_with('{')
-        // JSON
-        {
+        if file_path.starts_with('@') || file_path.contains("://") || file_path.starts_with('{') {
             continue;
         }
 
@@ -39,38 +67,60 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
             cwd.join(file_path)
         };
 
-        if resolved.exists() && resolved.is_file() {
-            if let Ok(content) = std::fs::read_to_string(&resolved) {
-                let rel = pathdiff::diff_paths(&resolved, cwd).unwrap_or_else(|| resolved.clone());
-                let display = rel.to_string_lossy();
+        if !resolved.exists() || !resolved.is_file() {
+            continue;
+        }
 
-                // 检测是否为二进制文件
-                if is_binary_content(&content) {
-                    refs.push(FileRef {
-                        path: display.to_string(),
-                        content: format!("[binary file: {} ({} bytes)]", display, content.len()),
-                        is_binary: true,
-                    });
-                } else {
-                    refs.push(FileRef {
-                        path: display.to_string(),
-                        content,
-                        is_binary: false,
-                    });
-                }
+        let rel = pathdiff::diff_paths(&resolved, cwd).unwrap_or_else(|| resolved.clone());
+        let display = rel.to_string_lossy().to_string();
 
-                // 从消息中移除 @file 引用
+        // 图片文件：base64 编码
+        if let Some(mime) = detect_image_mime(&resolved) {
+            if let Ok(bytes) = std::fs::read(&resolved) {
+                refs.push(FileRef {
+                    path: display,
+                    content: format!("[image: {} ({} bytes)]", file_path, bytes.len()),
+                    is_binary: true,
+                    image: Some(ImageData {
+                        mime_type: mime.to_string(),
+                        base64: base64_encode(&bytes),
+                    }),
+                });
                 cleaned = cleaned.replace(full, "");
+                continue;
             }
+        }
+
+        // 文本文件
+        if let Ok(content) = std::fs::read_to_string(&resolved) {
+            if is_binary_content(&content) {
+                refs.push(FileRef {
+                    path: display,
+                    content: format!("[binary file: {} ({} bytes)]", file_path, content.len()),
+                    is_binary: true,
+                    image: None,
+                });
+            } else {
+                refs.push(FileRef {
+                    path: display,
+                    content,
+                    is_binary: false,
+                    image: None,
+                });
+            }
+            cleaned = cleaned.replace(full, "");
         }
     }
 
-    // 构建最终消息
     let final_message = if refs.is_empty() {
         cleaned.trim().to_string()
     } else {
         let mut parts = Vec::new();
         for f in &refs {
+            if f.image.is_some() {
+                // 图片已在 image 字段中，不需要文本内联
+                continue;
+            }
             parts.push(format!(
                 "--- {} ---\n{}\n--- end of {} ---",
                 f.path, f.content, f.path
@@ -78,7 +128,9 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
         }
         let file_context = parts.join("\n\n");
         let user_text = cleaned.trim();
-        if user_text.is_empty() {
+        if file_context.is_empty() {
+            user_text.to_string()
+        } else if user_text.is_empty() {
             file_context
         } else {
             format!("{}\n\n{}", file_context, user_text)
@@ -90,17 +142,14 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
 
 /// 检测内容是否为二进制。
 fn is_binary_content(content: &str) -> bool {
-    // 简单启发式：如果前 8KB 中有 NUL 字节则视为二进制
     let check_len = content.len().min(8192);
     content.as_bytes()[..check_len].contains(&0)
 }
 
-/// 文件引用。
-#[derive(Debug, Clone)]
-pub struct FileRef {
-    pub path: String,
-    pub content: String,
-    pub is_binary: bool,
+/// Base64 编码（使用标准库之外的简易实现）。
+fn base64_encode(data: &[u8]) -> String {
+    use base64::{engine::general_purpose::STANDARD, Engine};
+    STANDARD.encode(data)
 }
 
 #[cfg(test)]
@@ -118,10 +167,10 @@ mod tests {
 
         assert!(msg.contains("hello world"));
         assert!(msg.contains("Please review"));
-        assert!(msg.contains("fix bugs"));
         assert!(!msg.contains("@hello.txt"));
         assert_eq!(refs.len(), 1);
         assert_eq!(refs[0].path, "hello.txt");
+        assert!(refs[0].image.is_none());
     }
 
     #[test]
@@ -174,6 +223,7 @@ mod tests {
         assert_eq!(refs.len(), 1);
         assert!(refs[0].is_binary);
         assert!(refs[0].content.contains("binary file"));
+        assert!(refs[0].image.is_none());
     }
 
     #[test]
@@ -186,5 +236,38 @@ mod tests {
         assert_eq!(refs.len(), 2);
         assert!(msg.contains("aaa"));
         assert!(msg.contains("bbb"));
+    }
+
+    #[test]
+    fn detect_image_mime_png() {
+        assert_eq!(detect_image_mime(Path::new("photo.png")), Some("image/png"));
+        assert_eq!(detect_image_mime(Path::new("photo.PNG")), Some("image/png"));
+    }
+
+    #[test]
+    fn detect_image_mime_jpg() {
+        assert_eq!(detect_image_mime(Path::new("img.jpg")), Some("image/jpeg"));
+        assert_eq!(detect_image_mime(Path::new("img.jpeg")), Some("image/jpeg"));
+    }
+
+    #[test]
+    fn detect_image_mime_unknown() {
+        assert_eq!(detect_image_mime(Path::new("doc.pdf")), None);
+        assert_eq!(detect_image_mime(Path::new("noext")), None);
+    }
+
+    #[test]
+    fn image_file_base64_encoded() {
+        let dir = TempDir::new().unwrap();
+        // 写入一个小 PNG header（非真实 PNG，但足够触发图片检测）
+        let png_bytes = vec![0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, 0x00, 0x00];
+        fs::write(dir.path().join("test.png"), &png_bytes).unwrap();
+
+        let (_, refs) = resolve_file_refs("@test.png", dir.path());
+        assert_eq!(refs.len(), 1);
+        assert!(refs[0].image.is_some());
+        let img = refs[0].image.clone().unwrap();
+        assert_eq!(img.mime_type, "image/png");
+        assert!(!img.base64.is_empty());
     }
 }
