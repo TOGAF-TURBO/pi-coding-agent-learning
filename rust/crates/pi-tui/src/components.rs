@@ -407,23 +407,7 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         ));
     }
 
-    // 右侧：模型名
-    let model_display = format!("{} ", footer.model);
-    let right_width = unicode_width_str(&model_display);
-    let left_width: usize = left_parts.iter().map(|s| unicode_width_str(&s.content)).sum();
-    let area_width = area.width as usize;
-    let padding = area_width.saturating_sub(left_width).saturating_sub(right_width);
-
-    let mut all_spans = left_parts;
-    if padding > 0 {
-        all_spans.push(Span::raw(" ".repeat(padding)));
-    }
-    all_spans.push(Span::styled(
-        model_display,
-        Style::default().fg(colors::DIM),
-    ));
-
-    let line = Line::from(all_spans);
+    let line = Line::from(left_parts);
     let para = Paragraph::new(line);
     f.render_widget(para, area);
 }
@@ -561,7 +545,3 @@ fn leak_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
 
-/// Unicode 字符串显示宽度。
-fn unicode_width_str(s: &str) -> usize {
-    s.chars().map(unicode_width).sum()
-}
