@@ -28,9 +28,9 @@ impl Default for MdColors {
 impl MdColors {
     pub fn dark() -> Self {
         Self {
-            code_fg: Color::Gray,
-            inline_code_fg: Color::Yellow,
-            heading_fg: Color::Yellow,
+            code_fg: crate::components::colors::MD_CODE,
+            inline_code_fg: crate::components::colors::MD_CODE,
+            heading_fg: crate::components::colors::MD_HEADING,
             bold_modifier: true,
         }
     }
