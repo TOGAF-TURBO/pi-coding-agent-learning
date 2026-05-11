@@ -55,6 +55,7 @@ pub fn render_markdown(text: &str, base_style: Style) -> Vec<Line<'static>> {
 pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdColors) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut in_code_block = false;
+    let mut code_lang = String::new();
 
     for raw_line in text.lines() {
         // 代码块边界
@@ -62,26 +63,47 @@ pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdCol
             in_code_block = !in_code_block;
             // 如果是开头的 ```，提取语言标签显示
             if in_code_block {
-                let lang = raw_line.trim_start_matches('`').trim();
-                if !lang.is_empty() {
+                code_lang = raw_line.trim_start_matches('`').trim().to_string();
+                if !code_lang.is_empty() {
                     lines.push(Line::from(vec![
                         Span::styled(
-                            format!("  {}", lang),
+                            format!("  {}", code_lang),
                             Style::default().fg(colors.inline_code_fg).add_modifier(Modifier::ITALIC),
                         ),
                     ]));
                 }
+            } else {
+                code_lang.clear();
             }
             continue;
         }
 
         if in_code_block {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    format!("  {}", raw_line),
-                    Style::default().fg(colors.code_fg),
-                ),
-            ]));
+            // diff 语法高亮
+            if code_lang == "diff" || raw_line.starts_with("---") || raw_line.starts_with("+++") {
+                let (_prefix, fg) = if raw_line.starts_with('+') && !raw_line.starts_with("+++") {
+                    ('+', Color::Green)
+                } else if raw_line.starts_with('-') && !raw_line.starts_with("---") {
+                    ('-', Color::Red)
+                } else if raw_line.starts_with("@@") {
+                    ('@', Color::Cyan)
+                } else {
+                    (' ', colors.code_fg)
+                };
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  {}", raw_line),
+                        Style::default().fg(fg),
+                    ),
+                ]));
+            } else {
+                lines.push(Line::from(vec![
+                    Span::styled(
+                        format!("  {}", raw_line),
+                        Style::default().fg(colors.code_fg),
+                    ),
+                ]));
+            }
             continue;
         }
 
