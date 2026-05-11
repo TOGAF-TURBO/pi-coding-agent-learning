@@ -93,45 +93,8 @@ impl LlmDriver for VertexDriver {
         let location = Self::location();
         let url = Self::build_url(&project, &location, &request.model);
 
-        // 构建 Gemini 格式的请求体
-        let mut contents = Vec::new();
-        for msg in &request.messages {
-            match msg {
-                pi_types::message::Message::User(u) => {
-                    let texts: Vec<_> = u
-                        .content
-                        .iter()
-                        .filter_map(|b| match b {
-                            pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>();
-                    if !texts.is_empty() {
-                        contents.push(json!({
-                            "role": "user",
-                            "parts": texts.iter().map(|t| json!({"text": t})).collect::<Vec<_>>()
-                        }));
-                    }
-                }
-                pi_types::message::Message::Assistant(a) => {
-                    let texts: Vec<_> = a
-                        .content
-                        .iter()
-                        .filter_map(|b| match b {
-                            pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>();
-                    if !texts.is_empty() {
-                        contents.push(json!({
-                            "role": "model",
-                            "parts": texts.iter().map(|t| json!({"text": t})).collect::<Vec<_>>()
-                        }));
-                    }
-                }
-                pi_types::message::Message::ToolResult(_) => {}
-            }
-        }
+        // 使用统一的 Gemini 消息转换
+        let contents = crate::transform::to_gemini_contents(&request.messages);
 
         let mut body = json!({
             "contents": contents,

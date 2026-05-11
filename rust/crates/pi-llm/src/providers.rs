@@ -225,77 +225,7 @@ struct ToolCallAccumulator {
 
 /// 构建 Anthropic Messages API 请求体。
 fn build_anthropic_request(req: &CompletionRequest) -> Value {
-    let mut messages = Vec::new();
-
-    for msg in &req.messages {
-        match msg {
-            pi_types::message::Message::User(u) => {
-                let content: Vec<Value> = u
-                    .content
-                    .iter()
-                    .map(|block| match block {
-                        pi_types::message::ContentBlock::Text(t) => {
-                            json!({"type": "text", "text": t.text})
-                        }
-                        pi_types::message::ContentBlock::Image(img) => json!({
-                            "type": "image",
-                            "source": {
-                                "type": "base64",
-                                "media_type": img.media_type,
-                                "data": img.data,
-                            }
-                        }),
-                        pi_types::message::ContentBlock::ToolResult(r) => json!({
-                            "type": "tool_result",
-                            "tool_use_id": r.tool_use_id,
-                            "content": r.content,
-                            "is_error": r.is_error,
-                        }),
-                        _ => json!({"type": "text", "text": "[unsupported]"}),
-                    })
-                    .collect();
-                messages.push(json!({"role": "user", "content": content}));
-            }
-            pi_types::message::Message::Assistant(a) => {
-                let content: Vec<Value> = a
-                    .content
-                    .iter()
-                    .map(|block| match block {
-                        pi_types::message::ContentBlock::Text(t) => {
-                            json!({"type": "text", "text": t.text})
-                        }
-                        pi_types::message::ContentBlock::Thinking(t) => {
-                            json!({"type": "thinking", "thinking": t.thinking})
-                        }
-                        pi_types::message::ContentBlock::ToolUse(tc) => json!({
-                            "type": "tool_use",
-                            "id": tc.id,
-                            "name": tc.name,
-                            "input": tc.input,
-                        }),
-                        _ => json!({"type": "text", "text": "[unsupported]"}),
-                    })
-                    .collect();
-                messages.push(json!({"role": "assistant", "content": content}));
-            }
-            pi_types::message::Message::ToolResult(tr) => {
-                let content: Vec<Value> = tr
-                    .content
-                    .iter()
-                    .map(|block| match block {
-                        pi_types::message::ContentBlock::ToolResult(r) => json!({
-                            "type": "tool_result",
-                            "tool_use_id": r.tool_use_id,
-                            "content": r.content,
-                            "is_error": r.is_error,
-                        }),
-                        _ => json!({"type": "text", "text": "[unsupported]"}),
-                    })
-                    .collect();
-                messages.push(json!({"role": "user", "content": content}));
-            }
-        }
-    }
+    let messages = crate::transform::to_anthropic_messages(&req.messages);
 
     let mut body = json!({
         "model": req.model,

@@ -69,36 +69,8 @@ impl LlmDriver for BedrockDriver {
         let region = Self::region();
         let url = Self::build_url(&request.model, &region);
 
-        let mut messages = Vec::new();
-        for msg in &request.messages {
-            match msg {
-                pi_types::message::Message::User(u) => {
-                    let texts: Vec<_> = u
-                        .content
-                        .iter()
-                        .filter_map(|b| match b {
-                            pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>();
-                    messages.push(json!({ "role": "user", "content": texts.join("\n") }));
-                }
-                pi_types::message::Message::Assistant(a) => {
-                    let texts: Vec<_> = a
-                        .content
-                        .iter()
-                        .filter_map(|b| match b {
-                            pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>();
-                    messages.push(json!({ "role": "assistant", "content": texts.join("\n") }));
-                }
-                pi_types::message::Message::ToolResult(t) => {
-                    messages.push(json!({ "role": "user", "content": t.content }));
-                }
-            }
-        }
+        // 使用统一的 Anthropic 消息格式（Bedrock converse-stream 兼容）
+        let messages = crate::transform::to_anthropic_messages(&request.messages);
 
         let mut body = json!({ "messages": messages });
 

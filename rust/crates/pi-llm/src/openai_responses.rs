@@ -43,37 +43,8 @@ impl LlmDriver for OpenAiResponsesDriver {
             .map(|b| format!("{}/responses", b.trim_end_matches('/')))
             .unwrap_or_else(|| "https://api.openai.com/v1/responses".to_string());
 
-        // 转换 messages 为 responses API 的 input 格式
-        let mut input = Vec::new();
-        for msg in &request.messages {
-            match msg {
-                pi_types::message::Message::User(u) => {
-                    let texts: Vec<_> = u
-                        .content
-                        .iter()
-                        .filter_map(|b| match b {
-                            pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>();
-                    input.push(json!({ "role": "user", "content": texts.join("\n") }));
-                }
-                pi_types::message::Message::Assistant(a) => {
-                    let texts: Vec<_> = a
-                        .content
-                        .iter()
-                        .filter_map(|b| match b {
-                            pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
-                            _ => None,
-                        })
-                        .collect::<Vec<_>>();
-                    input.push(json!({ "role": "assistant", "content": texts.join("\n") }));
-                }
-                pi_types::message::Message::ToolResult(t) => {
-                    input.push(json!({ "role": "user", "content": t.content }));
-                }
-            }
-        }
+        // 使用统一的 OpenAI 消息转换
+        let input = crate::transform::to_openai_messages(&request.messages);
 
         let mut body = json!({
             "model": request.model,

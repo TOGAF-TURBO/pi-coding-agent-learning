@@ -247,70 +247,7 @@ fn parse_gemini_chunk(
 
 /// Build Gemini API request body.
 fn build_gemini_request(req: &CompletionRequest) -> Value {
-    let mut contents = Vec::new();
-
-    for msg in &req.messages {
-        match msg {
-            pi_types::message::Message::User(u) => {
-                let parts: Vec<Value> = u
-                    .content
-                    .iter()
-                    .map(|block| match block {
-                        pi_types::message::ContentBlock::Text(t) => json!({"text": t.text}),
-                        pi_types::message::ContentBlock::ToolResult(r) => json!({
-                            "functionResponse": {
-                                "name": r.tool_use_id,
-                                "response": {
-                                    "content": r.content,
-                                }
-                            }
-                        }),
-                        _ => json!({"text": "[unsupported]"}),
-                    })
-                    .collect();
-                contents.push(json!({"role": "user", "parts": parts}));
-            }
-            pi_types::message::Message::Assistant(a) => {
-                let parts: Vec<Value> = a
-                    .content
-                    .iter()
-                    .map(|block| match block {
-                        pi_types::message::ContentBlock::Text(t) => json!({"text": t.text}),
-                        pi_types::message::ContentBlock::ToolUse(tc) => json!({
-                            "functionCall": {
-                                "name": tc.name,
-                                "args": tc.input,
-                            }
-                        }),
-                        pi_types::message::ContentBlock::Thinking(t) => {
-                            json!({"thought": true, "text": t.thinking})
-                        }
-                        _ => json!({"text": ""}),
-                    })
-                    .collect();
-                contents.push(json!({"role": "model", "parts": parts}));
-            }
-            pi_types::message::Message::ToolResult(tr) => {
-                let parts: Vec<Value> = tr
-                    .content
-                    .iter()
-                    .map(|block| {
-                        if let pi_types::message::ContentBlock::ToolResult(r) = block {
-                            json!({
-                                "functionResponse": {
-                                    "name": r.tool_use_id,
-                                    "response": {"content": r.content}
-                                }
-                            })
-                        } else {
-                            json!({"text": "[unsupported]"})
-                        }
-                    })
-                    .collect();
-                contents.push(json!({"role": "user", "parts": parts}));
-            }
-        }
-    }
+    let contents = crate::transform::to_gemini_contents(&req.messages);
 
     let mut body = json!({
         "contents": contents,
