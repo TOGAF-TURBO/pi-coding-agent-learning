@@ -164,6 +164,34 @@ pub enum Commands {
         /// Shell type (bash, zsh, fish, elvish).
         shell: String,
     },
+
+    /// Install an extension from a source path or URL.
+    #[command(name = "install")]
+    Install {
+        /// Source path or URL of the extension.
+        source: String,
+        /// Install as local (linked) extension.
+        #[arg(short, long)]
+        local: bool,
+    },
+
+    /// Remove an installed extension.
+    #[command(name = "remove", alias = "uninstall")]
+    Remove {
+        /// Name or source of the extension to remove.
+        source: String,
+    },
+
+    /// Update piso or an extension.
+    #[command(name = "update")]
+    Update {
+        /// Target to update: extension name, "self", or omitted for all.
+        target: Option<String>,
+    },
+
+    /// List installed extensions.
+    #[command(name = "list")]
+    List,
 }
 
 #[cfg(test)]
