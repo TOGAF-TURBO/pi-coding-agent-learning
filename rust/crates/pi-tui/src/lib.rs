@@ -1,4 +1,5 @@
 pub mod app;
+pub mod complete;
 pub mod components;
 pub mod engine;
 pub mod event;

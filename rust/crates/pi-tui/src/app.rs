@@ -55,6 +55,8 @@ pub struct AppState {
     pub entries: RwLock<Vec<ChatEntry>>,
     /// 页脚数据。
     pub footer: RwLock<FooterData>,
+    /// 当前 turn 开始时间。
+    pub turn_start: RwLock<Option<std::time::Instant>>,
 }
 
 impl AppState {
@@ -69,6 +71,7 @@ impl AppState {
                 output_tokens: 0,
                 duration_secs: 0,
             }),
+            turn_start: RwLock::new(None),
         }
     }
 
@@ -148,6 +151,16 @@ impl AppState {
 
     /// 更新 agent 状态。
     pub fn set_state(&self, state: AgentState) {
+        // 记录 turn 开始时间
+        if matches!(state, AgentState::Thinking | AgentState::Streaming) {
+            *self.turn_start.write() = Some(std::time::Instant::now());
+        }
+        if matches!(state, AgentState::Idle | AgentState::Error(_)) {
+            if let Some(start) = *self.turn_start.read() {
+                self.footer.write().duration_secs = start.elapsed().as_secs();
+            }
+            *self.turn_start.write() = None;
+        }
         self.footer.write().state = state;
     }
 

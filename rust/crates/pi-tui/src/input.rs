@@ -116,19 +116,29 @@ impl InputEditor {
         self.history_index = None;
     }
 
+    /// 替换从 start 字节到光标位置的文本。
+    /// 用于 Tab 补全。
+    pub fn replace_range(&mut self, start: usize, replacement: &str) {
+        if start > self.text.len() || start > self.cursor {
+            return;
+        }
+        self.text.drain(start..self.cursor);
+        self.text.insert_str(start, replacement);
+        self.cursor = start + replacement.len();
+    }
+
     /// 取出文本并清空（同时记录到历史）。
     pub fn take(&mut self) -> String {
         let text = self.text.clone();
 
         // 记录到历史（非空且与上一条不同）
-        if !text.is_empty() {
-            if self.history.last().map(|s| s.as_str()) != Some(&text) {
+        if !text.is_empty()
+            && self.history.last().map(|s| s.as_str()) != Some(&text) {
                 self.history.push(text.clone());
                 if self.history.len() > MAX_HISTORY {
                     self.history.remove(0);
                 }
             }
-        }
 
         self.text.clear();
         self.cursor = 0;
@@ -165,7 +175,7 @@ impl InputEditor {
     /// 浏览历史——下一条（下箭头）。
     pub fn history_down(&mut self) {
         match self.history_index {
-            None => return,
+            None => (),
             Some(idx) => {
                 if idx + 1 >= self.history.len() {
                     // 回到当前输入

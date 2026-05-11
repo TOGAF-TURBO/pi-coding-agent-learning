@@ -322,6 +322,29 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                             overlay_kind = Some(OverlayKind::ModelPicker);
                         }
                     }
+                    Action::TabComplete => {
+                        if !input.is_empty() && !is_running {
+                            let text = input.text().to_string();
+                            let cursor = input.cursor();
+                            if let Some((candidates, start)) = crate::complete::complete(&text, cursor, &ctx.cwd) {
+                                if candidates.len() == 1 {
+                                    // 单一候选：直接替换
+                                    input.replace_range(start, &candidates[0].text);
+                                } else if !candidates.is_empty() {
+                                    // 多个候选：显示第一个，循环
+                                    input.replace_range(start, &candidates[0].text);
+                                    // 显示候选数量
+                                    let hint: Vec<String> = candidates.iter()
+                                        .take(8)
+                                        .map(|c| c.display.clone())
+                                        .collect();
+                                    state.push_system(&format!("Completions: {}", hint.join("  ")));
+                                }
+                            }
+                        }
+                    }
+                    Action::ToggleFocus => {}
+                    Action::NewSession => {}
                     Action::None => {
                         if !is_running {
                             match key.code {
@@ -339,7 +362,6 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                             }
                         }
                     }
-                    _ => {}
                 }
             }
             Event::Resize(_, _) => {}

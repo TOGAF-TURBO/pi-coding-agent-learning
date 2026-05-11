@@ -234,6 +234,46 @@ fn render_inline_with_colors(line: &str, base_style: Style, colors: &MdColors) -
                     ));
                 }
             }
+            '[' => {
+                // 尝试匹配 [text](url)
+                if !current.is_empty() {
+                    spans.push(Span::styled(
+                        std::mem::take(&mut current),
+                        base_style,
+                    ));
+                }
+                // 收集 [text]
+                let mut link_text = String::new();
+                let mut found_bracket = false;
+                while let Some(&c) = chars.peek() {
+                    chars.next();
+                    if c == ']' {
+                        found_bracket = true;
+                        break;
+                    }
+                    link_text.push(c);
+                }
+                if found_bracket && chars.peek() == Some(&'(') {
+                    chars.next(); // consume (
+                    let mut url = String::new();
+                    while let Some(&c) = chars.peek() {
+                        chars.next();
+                        if c == ')' { break; }
+                        url.push(c);
+                    }
+                    // 渲染为带下划线的链接文本
+                    spans.push(Span::styled(
+                        link_text,
+                        base_style.fg(colors.inline_code_fg).add_modifier(Modifier::UNDERLINED),
+                    ));
+                } else {
+                    // 不是链接，还原 [text
+                    spans.push(Span::styled(
+                        format!("[{}", link_text),
+                        base_style,
+                    ));
+                }
+            }
             _ => current.push(ch),
         }
     }

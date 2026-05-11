@@ -16,6 +16,8 @@ pub enum Action {
     Quit,
     Cancel,
     ToggleFocus,
+    /// Tab 补全。
+    TabComplete,
     ScrollUp,
     ScrollDown,
     NewSession,
@@ -46,6 +48,7 @@ pub struct KeyBindings {
     pub new_session: Option<KeyBinding>,
     pub open_session_picker: Option<KeyBinding>,
     pub open_model_picker: Option<KeyBinding>,
+    pub tab_complete: Option<KeyBinding>,
 }
 
 /// 默认键绑定（与 TS 版 pi 兼容）。
@@ -55,12 +58,13 @@ impl KeyBindings {
             submit: Some(KeyBinding { modifiers: "ctrl".into(), key: "o".into() }),
             quit: Some(KeyBinding { modifiers: "ctrl".into(), key: "c".into() }),
             cancel: Some(KeyBinding { modifiers: "none".into(), key: "esc".into() }),
-            toggle_focus: Some(KeyBinding { modifiers: "none".into(), key: "tab".into() }),
+            toggle_focus: None,
             scroll_up: Some(KeyBinding { modifiers: "none".into(), key: "pageup".into() }),
             scroll_down: Some(KeyBinding { modifiers: "none".into(), key: "pagedown".into() }),
             new_session: Some(KeyBinding { modifiers: "ctrl".into(), key: "n".into() }),
             open_session_picker: Some(KeyBinding { modifiers: "ctrl".into(), key: "s".into() }),
             open_model_picker: Some(KeyBinding { modifiers: "ctrl".into(), key: "p".into() }),
+            tab_complete: Some(KeyBinding { modifiers: "none".into(), key: "tab".into() }),
         }
     }
 
@@ -129,6 +133,7 @@ impl KeyBindings {
             (&self.new_session, Action::NewSession),
             (&self.open_session_picker, Action::OpenSessionPicker),
             (&self.open_model_picker, Action::OpenModelPicker),
+            (&self.tab_complete, Action::TabComplete),
         ];
         for (kb, action) in fields {
             if let Some(binding) = kb {
