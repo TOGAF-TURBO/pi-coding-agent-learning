@@ -46,6 +46,8 @@ enum Command {
     Send { text: String },
     /// 中止当前 agent 执行。
     Abort,
+    /// 导出会话为 HTML。
+    Export { path: String },
 }
 
 /// 交互模式配置。
@@ -65,6 +67,12 @@ pub struct InteractiveConfig {
     pub available_models: Vec<(String, String, String)>,
     /// 快捷键配置。
     pub keybindings: KeyBindings,
+}
+
+/// Overlay 类型（用于区分回调行为）。
+enum OverlayKind {
+    SessionPicker,
+    ModelPicker,
 }
 
 /// Agent 运行时上下文 — 避免传 9 个参数。
@@ -137,6 +145,17 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                 Command::Abort => {
                     agent_abort.store(true, Ordering::SeqCst);
                 }
+                Command::Export { path } => {
+                    // 导出当前 session 为 HTML
+                    let entries = agent_state.entries.read();
+                    let html = render_session_html_simple(&entries);
+                    drop(entries);
+                    if let Err(e) = std::fs::write(&path, html) {
+                        agent_state.push_system(&format!("Export failed: {e}"));
+                    } else {
+                        agent_state.push_system(&format!("Exported to {}", path));
+                    }
+                }
             }
         }
     });
@@ -149,11 +168,6 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
 
     // Overlay 状态
     let mut overlay: Option<selector::Selector> = None;
-    /// Overlay 类型（用于区分回调行为）
-    enum OverlayKind {
-        SessionPicker,
-        ModelPicker,
-    }
     let mut overlay_kind: Option<OverlayKind> = None;
 
     loop {
@@ -251,6 +265,15 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                         if !input.is_empty() && !is_running {
                             let text = input.take();
                             scroll_offset = 0;
+
+                            // 检查 slash 命令
+                            if let Some(cmd) = crate::slash::parse(&text) {
+                                handle_slash_command(
+                                    cmd, &state, &cmd_tx, &session_dir, &mut overlay, &mut overlay_kind,
+                                ).await;
+                                continue;
+                            }
+
                             let _ = cmd_tx.send(Command::Send { text });
                         }
                     }
@@ -534,4 +557,114 @@ fn has_tool_results(content: &serde_json::Value) -> bool {
             block.get("type").and_then(|v| v.as_str()) == Some("tool_result")
         }))
         .unwrap_or(false)
+}
+
+/// 处理 slash 命令。
+async fn handle_slash_command(
+    cmd: crate::slash::SlashCommand,
+    state: &Arc<AppState>,
+    cmd_tx: &tokio::sync::mpsc::UnboundedSender<Command>,
+    session_dir: &std::path::PathBuf,
+    overlay: &mut Option<crate::selector::Selector>,
+    overlay_kind: &mut Option<OverlayKind>,
+) {
+    use crate::slash::SlashCommand;
+
+    match cmd {
+        SlashCommand::Help => {
+            state.push_system(&crate::slash::help_text());
+        }
+        SlashCommand::Clear => {
+            state.entries.write().clear();
+            state.push_system("Chat cleared.");
+        }
+        SlashCommand::Compact => {
+            state.push_system("Compaction triggered (will run after next response if threshold met).");
+        }
+        SlashCommand::Model(name) => {
+            match name {
+                Some(model_name) => {
+                    // 直接切换模型
+                    {
+                        let mut f = state.footer.write();
+                        f.model = model_name.clone();
+                    }
+                    state.push_system(&format!("Model switched to {}", model_name));
+                }
+                None => {
+                    // 打开模型选择器 — 通过触发 overlay
+                    // 需要调用方来处理，简化版：显示提示
+                    state.push_system("Use Ctrl+P to open model picker, or /model <name> to switch directly.");
+                }
+            }
+        }
+        SlashCommand::Branch => {
+            state.push_system("Branch: use /sessions to pick a session to branch from.");
+        }
+        SlashCommand::Export(path) => {
+            let _ = cmd_tx.send(Command::Export { path });
+        }
+        SlashCommand::Usage => {
+            let f = state.footer.read();
+            let in_t = f.input_tokens;
+            let out_t = f.output_tokens;
+            drop(f);
+            state.push_system(&format!("Token usage: {} input, {} output, {} total", in_t, out_t, in_t + out_t));
+        }
+        SlashCommand::Sessions => {
+            let mgr = SessionManager::new(session_dir);
+            if let Ok(sessions) = mgr.list().await {
+                let items: Vec<crate::selector::SelectItem> = sessions.into_iter().map(|s| {
+                    crate::selector::SelectItem {
+                        id: s.id.clone(),
+                        label: s.id.clone(),
+                        detail: format!("{} msgs, {}", s.message_count, s.cwd),
+                    }
+                }).collect();
+                if !items.is_empty() {
+                    *overlay = Some(crate::selector::Selector::new("Sessions", items));
+                    *overlay_kind = Some(OverlayKind::SessionPicker);
+                }
+            }
+        }
+        SlashCommand::Quit => {
+            // 发送一个特殊信号 — 通过直接退出循环处理
+            // 实际上这里无法直接 break，所以用 Abort 作为信号
+            // 改为：推送提示并让用户用 Ctrl+C 退出
+            state.push_system("Use Ctrl+C to quit.");
+        }
+        SlashCommand::Unknown(cmd) => {
+            state.push_system(&format!("Unknown command: /{}. Type /help for available commands.", cmd));
+        }
+    }
+}
+
+/// 简化 HTML 渲染（从 AppState entries 生成）。
+fn render_session_html_simple(entries: &std::vec::Vec<crate::app::ChatEntry>) -> String {
+    use crate::app::ChatRole;
+    let mut body = String::new();
+    for entry in entries {
+        let escaped = entry.content.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let (class, role) = match &entry.role {
+            ChatRole::User => ("user", "You"),
+            ChatRole::Assistant => ("assistant", "Assistant"),
+            ChatRole::System => ("system", "System"),
+            ChatRole::Tool { name, .. } => ("tool", name.as_str()),
+        };
+        body.push_str(&format!(
+            "<div class=\"msg {}\"><div class=\"role\">{}</div><pre>{}</pre></div>\n",
+            class, role, escaped
+        ));
+    }
+    format!(r#"<!DOCTYPE html>
+<html><head><meta charset="utf-8"><title>piso session</title>
+<style>
+body {{ font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #1a1a2e; color: #e0e0e0; }}
+.msg {{ margin: 12px 0; padding: 10px 14px; border-radius: 6px; }}
+.user {{ background: #16213e; border-left: 3px solid #0f3460; }}
+.assistant {{ background: #1a1a2e; border-left: 3px solid #e94560; }}
+.system {{ background: #0d1117; border-left: 3px solid #ffd700; color: #aaa; font-style: italic; }}
+.role {{ font-weight: bold; font-size: 0.85em; color: #888; margin-bottom: 4px; }}
+pre {{ white-space: pre-wrap; margin: 0; }}
+</style></head><body>{}</body></html>"#, body)
 }

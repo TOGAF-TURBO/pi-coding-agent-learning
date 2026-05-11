@@ -14,6 +14,12 @@ use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
 /// Edit 工具执行器。
 pub struct EditTool;
 
+impl Default for EditTool {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EditTool {
     pub fn new() -> Self {
         Self
@@ -96,6 +102,14 @@ impl ToolExecutor for EditTool {
 
         let new_content = content.replacen(old_text, new_text, 1);
 
+        // 生成 diff
+        let diff = crate::diff::format_diff(&content, &new_content, path);
+        let diff_display = if diff.is_empty() {
+            String::new()
+        } else {
+            format!("\n```diff\n{}\n```", diff.trim())
+        };
+
         fs::write(path, &new_content).await.map_err(|e| PiError::Tool {
             tool: "edit".to_string(),
             message: format!("failed to write '{}': {e}", path),
@@ -107,8 +121,8 @@ impl ToolExecutor for EditTool {
         Ok(ToolResult {
             tool_use_id: String::new(),
             output: match old_line {
-                Some(line) => format!("Edited {} at line {}", path, line),
-                None => format!("Edited {}", path),
+                Some(line) => format!("Edited {} at line {}{}", path, line, diff_display),
+                None => format!("Edited {}{}", path, diff_display),
             },
             is_error: false,
             duration_ms: None,

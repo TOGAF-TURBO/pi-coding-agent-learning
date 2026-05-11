@@ -137,6 +137,15 @@ impl AppState {
         });
     }
 
+    /// 追加系统消息。
+    pub fn push_system(&self, text: &str) {
+        self.entries.write().push(ChatEntry {
+            role: ChatRole::System,
+            content: text.to_string(),
+            streaming: false,
+        });
+    }
+
     /// 更新 agent 状态。
     pub fn set_state(&self, state: AgentState) {
         self.footer.write().state = state;
