@@ -325,8 +325,25 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     if !cli.no_context_files {
         let ctx_files = context::load_project_context_files(&cwd, config_dir.as_deref());
         if !ctx_files.is_empty() {
+            for cf in &ctx_files {
+                eprintln!("[context] {}", cf.path.display());
+            }
             prompt_builder = prompt_builder.append(
                 context::format_context_for_prompt(&ctx_files)
+            );
+        }
+    }
+
+    // 加载技能
+    if !cli.no_skills {
+        let global_skills = config::skills_dir();
+        let loaded_skills = skills::load_skills(&cwd, global_skills.as_deref());
+        if !loaded_skills.is_empty() {
+            for s in &loaded_skills {
+                eprintln!("[skill] {}", s.name);
+            }
+            prompt_builder = prompt_builder.append(
+                skills::format_skills_for_prompt(&loaded_skills)
             );
         }
     }

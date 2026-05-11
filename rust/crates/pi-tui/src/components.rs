@@ -7,6 +7,7 @@ use ratatui::widgets::{Block, Borders, Paragraph, Wrap};
 
 use crate::app::{AgentState, AppState, ChatRole};
 use crate::layout::LayoutRegions;
+use crate::markdown::render_markdown;
 
 /// 工具结果最大显示行数。
 const MAX_TOOL_LINES: usize = 8;
@@ -118,25 +119,40 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
             _ => Style::default(),
         };
 
-        let wrapped = wrap_text(&entry.content, content_width);
-        let max_lines = match &entry.role {
-            ChatRole::Tool { .. } => MAX_TOOL_LINES,
-            _ => usize::MAX,
-        };
-
-        let display_lines: Vec<String> = if wrapped.len() > max_lines {
-            let mut truncated: Vec<String> = wrapped[..max_lines].to_vec();
-            truncated.push(format!("  ... ({} more lines)", wrapped.len() - max_lines));
-            truncated
+        // Assistant 消息用 Markdown 渲染，其余用纯文本
+        if matches!(entry.role, ChatRole::Assistant) {
+            let md_lines = render_markdown(&entry.content, content_style);
+            for md_line in md_lines {
+                // 在每个 span 前添加缩进，保留 markdown 样式
+                let mut spans: Vec<Span<'static>> = vec![
+                    Span::raw("   ")
+                ];
+                for s in md_line.spans {
+                    spans.push(Span::styled(s.content, s.style));
+                }
+                lines.push(Line::from(spans));
+            }
         } else {
-            wrapped
-        };
+            let wrapped = wrap_text(&entry.content, content_width);
+            let max_lines = match &entry.role {
+                ChatRole::Tool { .. } => MAX_TOOL_LINES,
+                _ => usize::MAX,
+            };
 
-        for line in &display_lines {
-            lines.push(Line::from(Span::styled(
-                format!("   {}", line),
-                content_style,
-            )));
+            let display_lines: Vec<String> = if wrapped.len() > max_lines {
+                let mut truncated: Vec<String> = wrapped[..max_lines].to_vec();
+                truncated.push(format!("  ... ({} more lines)", wrapped.len() - max_lines));
+                truncated
+            } else {
+                wrapped
+            };
+
+            for line in &display_lines {
+                lines.push(Line::from(Span::styled(
+                    format!("   {}", line),
+                    content_style,
+                )));
+            }
         }
 
         lines.push(Line::from("")); // 空行分隔

@@ -136,6 +136,11 @@ impl AgentLoop {
         }
     }
 
+    /// 提取 session（消耗 AgentLoop，返回 JSONL session 用于持久化）。
+    pub fn into_session(self) -> JsonlSession {
+        self.session
+    }
+
     /// 发送用户消息并运行 agent 循环直到完成。
     pub async fn run(&mut self, user_message: &str) -> Result<AgentOutput> {
         // 追加用户消息到会话

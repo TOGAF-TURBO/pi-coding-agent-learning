@@ -2,13 +2,16 @@
 //!
 //! 对应 `packages/coding-agent/src/modes/interactive/interactive-mode.ts`。
 //!
-//! 架构：主 task 运行 TUI 事件循环，agent 在独立 tokio task 中运行。
+//! 架构：
 //! ```text
 //! ┌─────────────┐   tokio::mpsc    ┌──────────────┐
 //! │  TUI task   │ ──── Command ──> │  Agent task   │
 //! │  (渲染+输入) │ <── AppState ─── │  (LLM+工具)   │
-//! └─────────────┘   Arc<RwLock>    └──────────────┘
+//! └─────────────┘   Arc<RwLock>    │  1 session    │
+//!                                   └──────────────┘
 //! ```
+//! 关键：agent task 持有唯一的 JsonlSession，多次 turn 复用同一 session，
+//! LLM 拥有完整的多轮对话上下文。
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -61,7 +64,6 @@ pub struct InteractiveConfig {
 pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let state = Arc::new(AppState::new(&cfg.model, &cfg.provider));
 
-    // 工具注册表
     let tools = make_tools(&cfg.cwd);
     let session_dir = cfg.cwd.join(".piso").join("sessions");
     let model = cfg.model.clone();
@@ -71,13 +73,15 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let system_prompt = cfg.system_prompt.clone();
     let cwd_str = cfg.cwd.to_string_lossy().to_string();
 
-    // 命令 channel
-    let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Command>();
+    // 创建唯一 session
+    let mgr = SessionManager::new(&session_dir);
+    mgr.ensure_dir().await?;
+    let mut session = mgr.create(&cwd_str).await?;
 
-    // Abort flag — TUI 设置，agent task 检查
+    let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Command>();
     let abort_flag = Arc::new(AtomicBool::new(false));
 
-    // Agent task
+    // Agent task — 持有 session，串行处理命令
     let agent_state = state.clone();
     let agent_abort = abort_flag.clone();
     let agent_handle = tokio::spawn(async move {
@@ -87,23 +91,19 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                     abort_flag_clear(&agent_abort);
                     run_agent_turn(
                         &text,
+                        &mut session,
                         &agent_state,
                         &tools,
-                        &session_dir,
-                        &cwd_str,
                         &model,
                         &api_key,
                         &api_type,
                         &base_url,
                         &system_prompt,
-                        &agent_abort,
                     )
                     .await;
                 }
                 Command::Abort => {
                     agent_abort.store(true, Ordering::SeqCst);
-                    // 等 agent 检测到 abort 并设置 Idle
-                    // 这里只设 flag，不阻塞
                 }
             }
         }
@@ -115,7 +115,6 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let mut scroll_offset: usize = 0;
 
     loop {
-        // 渲染
         engine.terminal().draw(|f| {
             let size = f.area();
             let regions = layout::calculate(size, 5);
@@ -143,7 +142,6 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                     Action::Quit => break,
                     Action::Cancel => {
                         if is_running {
-                            // 中止 agent
                             let _ = cmd_tx.send(Command::Abort);
                             state.set_state(AgentState::Idle);
                         } else if !input.is_empty() {
@@ -179,42 +177,25 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
         }
     }
 
-    // 清理
     drop(cmd_tx);
     agent_handle.abort();
     Ok(())
 }
 
-/// 运行一次 agent 循环。
+/// 运行一次 agent turn（使用共享 session）。
 async fn run_agent_turn(
     text: &str,
+    session: &mut JsonlSession,
     state: &Arc<AppState>,
     tools: &ToolRegistry,
-    session_dir: &std::path::Path,
-    cwd: &str,
     model: &str,
     api_key: &str,
     api_type: &str,
     base_url: &Option<String>,
     system_prompt: &str,
-    abort_flag: &Arc<AtomicBool>,
 ) {
     state.push_user(text);
     state.set_state(AgentState::Thinking);
-
-    // 创建会话
-    let mgr = SessionManager::new(session_dir);
-    if let Err(e) = mgr.ensure_dir().await {
-        state.set_state(AgentState::Error(format!("Session dir: {e}")));
-        return;
-    }
-    let session = match mgr.create(cwd).await {
-        Ok(s) => s,
-        Err(e) => {
-            state.set_state(AgentState::Error(format!("Session: {e}")));
-            return;
-        }
-    };
 
     // 创建 driver
     let driver: Box<dyn LlmDriver> = match api_type {
@@ -227,7 +208,7 @@ async fn run_agent_turn(
         _ => Box::new(pi_llm::providers::AnthropicDriver::new()),
     };
 
-    // 创建流式回调
+    // 流式回调
     let sink_state = state.clone();
     let sink: Arc<StreamSink> = Arc::new(Box::new(move |event| {
         use pi_llm::driver::StreamEvent;
@@ -239,7 +220,6 @@ async fn run_agent_turn(
                 sink_state.set_state(AgentState::ToolRunning { name });
             }
             StreamEvent::ToolResult { name, output, is_error, .. } => {
-                // 工具执行结果 → chat
                 sink_state.push_tool_result(&name, &output, is_error);
                 sink_state.set_state(AgentState::Thinking);
             }
@@ -250,10 +230,36 @@ async fn run_agent_turn(
         }
     }));
 
-    let mut agent = AgentLoop::new(session, driver, tools.clone_for_agent(), model)
-        .with_api_key(api_key)
-        .with_system_prompt(system_prompt)
-        .with_stream_sink(sink);
+    // 注意：AgentLoop::new takes ownership of session。
+    // 我们先用临时 session，run 后再取回。
+    // 但这样会丢失已有消息。
+    //
+    // 正确做法：克隆 session path，创建新的空 AgentLoop 但复用已有条目。
+    // AgentLoop 的 session 字段需要知道之前的历史才能 build_messages。
+    //
+    // 所以必须让 AgentLoop 借用 session 而不是拥有。
+    // 但 run(&mut self) + session 追加操作需要 &mut session。
+    //
+    // 当前方案：创建临时 session，run 结束后把条目复制回来。
+    // 但这样会导致不一致。
+    //
+    // 最简方案：直接把 session 给 AgentLoop，run 结束后用 into_session() 取回。
+
+    // 临时 dummy session 用于 std::mem::replace
+    // AgentLoop takes ownership of session，run 后通过 into_session() 取回
+    let dummy_path = std::env::temp_dir().join(format!("piso-dummy-{}", std::process::id()));
+    let dummy_session = JsonlSession::create(&dummy_path, "").await
+        .unwrap_or_else(|_| panic!("Failed to create dummy session"));
+
+    let mut agent = AgentLoop::new(
+        std::mem::replace(session, dummy_session),
+        driver,
+        tools.clone_for_agent(),
+        model,
+    )
+    .with_api_key(api_key)
+    .with_system_prompt(system_prompt)
+    .with_stream_sink(sink);
 
     if let Some(url) = base_url {
         agent = agent.with_base_url(url);
@@ -272,7 +278,8 @@ async fn run_agent_turn(
         }
     }
 
-    abort_flag.store(false, Ordering::SeqCst);
+    // 取回 session（包含所有累积的消息历史）
+    *session = agent.into_session();
 }
 
 /// 构建工具注册表。
@@ -288,7 +295,6 @@ fn make_tools(cwd: &std::path::Path) -> ToolRegistry {
     tools
 }
 
-/// 清除 abort flag。
 fn abort_flag_clear(flag: &Arc<AtomicBool>) {
     flag.store(false, Ordering::SeqCst);
 }
