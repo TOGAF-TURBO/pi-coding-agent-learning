@@ -137,7 +137,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     load_history(&session, &state);
 
     // 缓存 session ID（header 显示用）
-    let mut session_id_display = session.id().to_string();
+    let mut _session_id_display = session.id().to_string();
 
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Command>();
     let abort_flag = Arc::new(AtomicBool::new(false));
@@ -260,7 +260,6 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let mut overlay_kind: Option<OverlayKind> = None;
 
     loop {
-        let sid = session_id_display.clone();
         let hints = keybindings.footer_hints(!matches!(state.agent_state(), AgentState::Idle));
         engine.terminal().draw(|f| {
             let size = f.area();
@@ -272,9 +271,8 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 input.text(),
                 input.cursor(),
                 scroll_offset,
-                &sid,
-                &hints,
                 &git_display,
+                &hints,
                 tick,
             );
 
@@ -309,7 +307,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                                         Ok(new_session) => {
                                             state.entries.write().clear();
                                             load_history(&new_session, &state);
-                                            session_id_display = new_session.id().to_string();
+                                            _session_id_display = new_session.id().to_string();
                                         }
                                         Err(e) => {
                                             state.set_state(AgentState::Error(format!(

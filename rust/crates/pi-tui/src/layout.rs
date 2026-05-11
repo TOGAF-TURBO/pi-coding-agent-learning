@@ -1,10 +1,8 @@
-//! 五区布局 — header / chat / status / editor / footer。
+//! 四区布局 — chat / status / editor / footer。
 //!
-//! 对应 TS 版本的 InteractiveMode 布局：
+//! 与 TS 版对齐：无独立 header，模型信息在 footer 显示。
 //! ```text
 //! ┌─────────────────────────────────┐
-//! │ header: model + session info    │  1 行
-//! ├─────────────────────────────────┤
 //! │                                 │
 //! │ chat: 消息流（滚动区域）          │  flex
 //! │                                 │
@@ -13,7 +11,7 @@
 //! ├─────────────────────────────────┤
 //! │ editor: 用户输入（可多行）        │  3-8 行
 //! ├─────────────────────────────────┤
-//! │ footer: 快捷键提示              │  1 行
+//! │ footer: 模型 + 快捷键提示        │  1 行
 //! └─────────────────────────────────┘
 //! ```
 
@@ -22,21 +20,19 @@ use ratatui::layout::{Constraint, Direction, Layout, Rect};
 /// 布局区域索引。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Region {
-    Header,
     Chat,
     Status,
     Editor,
     Footer,
 }
 
-/// 计算五区布局。
+/// 计算四区布局。
 pub fn calculate(area: Rect, editor_height: u16) -> LayoutRegions {
     let editor_h = editor_height.max(3).min(area.height / 2);
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),        // header
             Constraint::Min(3),           // chat (flex)
             Constraint::Length(1),        // status
             Constraint::Length(editor_h), // editor
@@ -45,18 +41,16 @@ pub fn calculate(area: Rect, editor_height: u16) -> LayoutRegions {
         .split(area);
 
     LayoutRegions {
-        header: outer[0],
-        chat: outer[1],
-        status: outer[2],
-        editor: outer[3],
-        footer: outer[4],
+        chat: outer[0],
+        status: outer[1],
+        editor: outer[2],
+        footer: outer[3],
     }
 }
 
 /// 计算后的布局区域。
 #[derive(Debug, Clone, Copy)]
 pub struct LayoutRegions {
-    pub header: Rect,
     pub chat: Rect,
     pub status: Rect,
     pub editor: Rect,
@@ -66,7 +60,6 @@ pub struct LayoutRegions {
 impl LayoutRegions {
     pub fn get(&self, region: Region) -> Rect {
         match region {
-            Region::Header => self.header,
             Region::Chat => self.chat,
             Region::Status => self.status,
             Region::Editor => self.editor,
@@ -80,21 +73,17 @@ mod tests {
     use super::*;
 
     #[test]
-    fn five_regions_fit_in_24_rows() {
+    fn four_regions_fit_in_24_rows() {
         let area = Rect::new(0, 0, 80, 24);
         let regions = calculate(area, 5);
-        assert_eq!(regions.header.height, 1);
         assert_eq!(regions.status.height, 1);
         assert_eq!(regions.editor.height, 5);
         assert_eq!(regions.footer.height, 1);
         // chat gets the rest
-        assert!(regions.chat.height >= 12);
+        assert!(regions.chat.height >= 15);
         // total must equal area height
-        let total = regions.header.height
-            + regions.chat.height
-            + regions.status.height
-            + regions.editor.height
-            + regions.footer.height;
+        let total =
+            regions.chat.height + regions.status.height + regions.editor.height + regions.footer.height;
         assert_eq!(total, 24);
     }
 

@@ -45,7 +45,6 @@ pub(crate) mod colors {
     pub const TOOL_SUCCESS_BG: Color = Color::Rgb(40, 50, 40); // #283228
     pub const TOOL_ERROR_BG: Color = Color::Rgb(60, 40, 40);   // #3c2828
     pub const THINKING: Color = Color::Rgb(128, 128, 128);     // gray
-    pub const SELECTED_BG: Color = Color::Rgb(58, 58, 74);     // #3a3a4a
 }
 
 /// Braille spinner 帧序列（与 TS 版 DEFAULT_FRAMES 一致）。
@@ -69,62 +68,7 @@ fn format_tokens(count: u32) -> String {
     }
 }
 
-/// 渲染 header 区域。
-pub fn render_header(
-    f: &mut ratatui::Frame,
-    area: Rect,
-    model: &str,
-    provider: &str,
-    session_id: &str,
-    git: &str,
-) {
-    // 截断 session ID
-    let short_id = if session_id.len() > 8 {
-        &session_id[..8]
-    } else {
-        session_id
-    };
 
-    let mut spans = vec![
-        // 品牌名
-        Span::styled(
-            " piso",
-            Style::default()
-                .fg(colors::BORDER_ACCENT)
-                .add_modifier(Modifier::BOLD),
-        ),
-        // 分隔符
-        Span::styled(
-            " │ ",
-            Style::default().fg(colors::DARK_GRAY),
-        ),
-        // 模型信息
-        Span::styled(
-            format!("{} ({})", model, provider),
-            Style::default().fg(colors::DIM),
-        ),
-    ];
-
-    // Git 分支
-    if !git.is_empty() {
-        spans.push(Span::styled(
-            " ─ ".to_string(),
-            Style::default().fg(colors::DARK_GRAY),
-        ));
-        spans.push(Span::styled(
-            format!("{}", git),
-            Style::default().fg(colors::ACCENT),
-        ));
-    }
-
-    // Session ID 右对齐（用空格填充）
-    let right_text = format!("{} ", short_id);
-    spans.push(Span::raw(right_text));
-
-    let line = Line::from(spans);
-    let para = Paragraph::new(line).style(Style::default().bg(colors::SELECTED_BG));
-    f.render_widget(para, area);
-}
 
 /// 将文本按宽度换行。
 fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
@@ -487,14 +431,39 @@ pub fn render_editor(
     }
 }
 
-/// 渲染 footer 区域。
+/// 渲染 footer 区域 — 模型信息 + 快捷键提示。
 pub fn render_footer(
     f: &mut ratatui::Frame,
     area: Rect,
     _is_running: bool,
+    model: &str,
+    provider: &str,
+    git: &str,
     hints: &[(&'static str, String)],
 ) {
     let mut spans = Vec::new();
+
+    // 左侧：模型信息
+    spans.push(Span::styled(
+        format!(" {} ({})", model, provider),
+        Style::default().fg(colors::DIM),
+    ));
+
+    // Git 分支
+    if !git.is_empty() {
+        spans.push(Span::styled(
+            format!(" {}", git),
+            Style::default().fg(colors::ACCENT),
+        ));
+    }
+
+    // 分隔
+    spans.push(Span::styled(
+        "  ".to_string(),
+        Style::default(),
+    ));
+
+    // 快捷键提示
     for (tag, text) in hints {
         if *tag == "key" {
             spans.push(Span::styled(
@@ -510,11 +479,13 @@ pub fn render_footer(
             ));
         }
     }
+
     let para = Paragraph::new(Line::from(spans));
     f.render_widget(para, area);
 }
 
 /// 渲染全部五个区域。
+/// 渲染全部四个区域。
 pub fn render_all(
     f: &mut ratatui::Frame,
     regions: LayoutRegions,
@@ -522,9 +493,8 @@ pub fn render_all(
     input: &str,
     cursor_pos: usize,
     scroll_offset: usize,
-    session_id: &str,
-    footer_hints: &[(&'static str, String)],
     git: &str,
+    footer_hints: &[(&'static str, String)],
     tick: usize,
 ) {
     let footer = state.footer.read();
@@ -533,11 +503,10 @@ pub fn render_all(
     let is_running = !matches!(&footer.state, AgentState::Idle);
     drop(footer);
 
-    render_header(f, regions.header, &model, &provider, session_id, git);
     render_chat(f, regions.chat, state, scroll_offset, tick);
     render_status(f, regions.status, state);
     render_editor(f, regions.editor, input, cursor_pos, true, is_running);
-    render_footer(f, regions.footer, is_running, footer_hints);
+    render_footer(f, regions.footer, is_running, &model, &provider, git, footer_hints);
 }
 
 /// Leaked string for static lifetime.
