@@ -180,12 +180,6 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
         match &entry.role {
             ChatRole::User => {
                 // 用户消息：带背景色的块
-                lines.push(Line::from(Span::styled(
-                    " ── You ──────────────────────────────────",
-                    Style::default()
-                        .fg(colors::ACCENT)
-                        .add_modifier(Modifier::BOLD),
-                )));
                 let wrapped = wrap_text(&entry.content, content_width);
                 for line in &wrapped {
                     lines.push(Line::from(Span::styled(
