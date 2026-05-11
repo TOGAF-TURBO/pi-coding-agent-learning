@@ -120,7 +120,8 @@ pub fn help_text() -> String {
         "  /clone              Duplicate current session",
         "  /sessions, /s       Open session picker",
         "  /quit, /q           Quit piso",
-    ].join("\n")
+    ]
+    .join("\n")
 }
 
 #[cfg(test)]
@@ -136,7 +137,10 @@ mod tests {
 
     #[test]
     fn parse_model_with_arg() {
-        assert!(matches!(parse("/model gpt-4"), Some(SlashCommand::Model(Some(_)))));
+        assert!(matches!(
+            parse("/model gpt-4"),
+            Some(SlashCommand::Model(Some(_)))
+        ));
     }
 
     #[test]
@@ -200,7 +204,7 @@ mod tests {
     #[test]
     fn parse_clone() {
         match parse("/clone") {
-            Some(SlashCommand::Clone) => {},
+            Some(SlashCommand::Clone) => {}
             _ => panic!("Expected Clone"),
         }
     }

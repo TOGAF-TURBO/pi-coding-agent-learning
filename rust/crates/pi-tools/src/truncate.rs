@@ -53,10 +53,7 @@ pub fn truncate_output(output: &str) -> TruncatedOutput {
 
     result.push_str(&format!(
         "\n<output truncated: {} lines, {} bytes — showing first {} and last {} lines>\n\n",
-        original_lines,
-        original_bytes,
-        half,
-        half,
+        original_lines, original_bytes, half, half,
     ));
 
     for line in lines.iter().rev().take(half).rev() {

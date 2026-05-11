@@ -25,15 +25,15 @@ pub struct BranchResult {
 ///
 /// 返回分支点之后被截断的条目数量。
 /// 调用方应在追加新消息时设置 parent_id 指向 `from_entry_id`。
-pub fn create_branch(
-    entries: &[SessionEntry],
-    from_entry_id: &str,
-) -> Result<BranchResult> {
+pub fn create_branch(entries: &[SessionEntry], from_entry_id: &str) -> Result<BranchResult> {
     // 找到分支点在 entries 中的索引
-    let branch_idx = entries.iter().position(|e| match e {
-        SessionEntry::Message(m) => m.id == from_entry_id,
-        _ => false,
-    }).ok_or_else(|| anyhow::anyhow!("Entry {} not found", from_entry_id))?;
+    let branch_idx = entries
+        .iter()
+        .position(|e| match e {
+            SessionEntry::Message(m) => m.id == from_entry_id,
+            _ => false,
+        })
+        .ok_or_else(|| anyhow::anyhow!("Entry {} not found", from_entry_id))?;
 
     // 计算分支点之后的条目数
     let pruned_count = entries.len() - branch_idx - 1;
@@ -45,10 +45,7 @@ pub fn create_branch(
 }
 
 /// 获取从根到指定条目的线性路径（忽略其他分支）。
-pub fn lineage_to(
-    entries: &[SessionEntry],
-    target_id: &str,
-) -> Vec<SessionEntry> {
+pub fn lineage_to(entries: &[SessionEntry], target_id: &str) -> Vec<SessionEntry> {
     // 建立 id → entry 映射
     let mut id_map: std::collections::HashMap<String, &SessionEntry> =
         std::collections::HashMap::new();
@@ -82,7 +79,7 @@ pub fn lineage_to(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pi_types::session::{SessionEntry, MessageEntry};
+    use pi_types::session::{MessageEntry, SessionEntry};
 
     fn make_entry(id: &str, parent_id: Option<&str>, role: &str) -> SessionEntry {
         SessionEntry::Message(MessageEntry {

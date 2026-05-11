@@ -11,7 +11,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result, bail};
+use anyhow::{bail, Context, Result};
 use tokio::fs;
 use tokio::io::AsyncWriteExt;
 
@@ -87,7 +87,11 @@ impl JsonlSession {
     }
 
     /// 创建新会话文件，使用指定的 ID。
-    pub async fn create_with_id(path: impl AsRef<Path>, cwd: impl Into<String>, id: &str) -> Result<Self> {
+    pub async fn create_with_id(
+        path: impl AsRef<Path>,
+        cwd: impl Into<String>,
+        id: &str,
+    ) -> Result<Self> {
         let path = path.as_ref().to_path_buf();
         let header = SessionHeader::new(id, cwd);
 
@@ -117,7 +121,8 @@ impl JsonlSession {
         file.write_all(b"\n").await?;
 
         self.current_leaf_id = Some(entry.id().to_string());
-        self.by_id.insert(entry.id().to_string(), self.entries.len());
+        self.by_id
+            .insert(entry.id().to_string(), self.entries.len());
         self.entries.push(entry);
         Ok(())
     }
@@ -256,7 +261,11 @@ mod tests {
 
         // m1 → m2 → m3
         for i in 1..=3 {
-            let parent = if i == 1 { "null".to_string() } else { format!(r#""m{}""#, i - 1) };
+            let parent = if i == 1 {
+                "null".to_string()
+            } else {
+                format!(r#""m{}""#, i - 1)
+            };
             let json = format!(
                 r#"{{"type":"message","id":"m{i}","parentId":{parent},"timestamp":"2026-05-10T12:00:0{i}Z","role":"user","content":[]}}"#
             );

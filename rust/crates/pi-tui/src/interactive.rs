@@ -14,8 +14,8 @@
 //! LLM 拥有完整的多轮对话上下文。
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 use std::sync::RwLock;
 
 use anyhow::Result;
@@ -152,15 +152,12 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 Command::Send { text } => {
                     abort_flag_clear(&agent_abort);
                     // 解析 @file 引用
-                    let resolved = pi_tools::fileref::resolve_file_refs(&text, &std::path::PathBuf::from(&agent_ctx.cwd)).0;
-                    run_agent_turn(
-                        &resolved,
-                        &mut session,
-                        &agent_state,
-                        &tools,
-                        &agent_ctx,
+                    let resolved = pi_tools::fileref::resolve_file_refs(
+                        &text,
+                        &std::path::PathBuf::from(&agent_ctx.cwd),
                     )
-                    .await;
+                    .0;
+                    run_agent_turn(&resolved, &mut session, &agent_state, &tools, &agent_ctx).await;
                 }
                 Command::Abort => {
                     agent_abort.store(true, Ordering::SeqCst);
@@ -198,13 +195,12 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                         drop(guard);
                         agent_state.push_system(&format!(
                             "Compacted: removed {} older messages ({} remaining)",
-                            removed, total - removed
+                            removed,
+                            total - removed
                         ));
                     } else {
-                        agent_state.push_system(&format!(
-                            "Only {} messages, no compaction needed",
-                            total
-                        ));
+                        agent_state
+                            .push_system(&format!("Only {} messages, no compaction needed", total));
                     }
                 }
                 Command::NewSession => {
@@ -221,7 +217,10 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                                 for entry in imported.entries() {
                                     let _ = session.append(entry.clone()).await;
                                 }
-                                agent_state.push_system(&format!("Imported {} entries from {}", count, path));
+                                agent_state.push_system(&format!(
+                                    "Imported {} entries from {}",
+                                    count, path
+                                ));
                             }
                             Err(e) => {
                                 agent_state.push_system(&format!("Failed to import: {e}"));
@@ -236,10 +235,13 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                         &std::path::PathBuf::from(&agent_ctx.cwd)
                             .parent()
                             .unwrap_or(std::path::Path::new("."))
-                            .join(".piso/sessions")
+                            .join(".piso/sessions"),
                     );
                     // 使用 session_dir 创建克隆
-                    agent_state.push_system(&format!("Cloned {} entries. New session will be available on restart.", count));
+                    agent_state.push_system(&format!(
+                        "Cloned {} entries. New session will be available on restart.",
+                        count
+                    ));
                 }
             }
         }
@@ -262,7 +264,16 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
         engine.terminal().draw(|f| {
             let size = f.area();
             let regions = layout::calculate(size, 5);
-            components::render_all(f, regions, &state, input.text(), scroll_offset, &sid, &hints, &git_display);
+            components::render_all(
+                f,
+                regions,
+                &state,
+                input.text(),
+                scroll_offset,
+                &sid,
+                &hints,
+                &git_display,
+            );
 
             // 渲染 overlay（如果有）
             if let Some(ref mut sel) = overlay {
@@ -298,7 +309,9 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                                             session_id_display = new_session.id().to_string();
                                         }
                                         Err(e) => {
-                                            state.set_state(AgentState::Error(format!("Session: {e}")));
+                                            state.set_state(AgentState::Error(format!(
+                                                "Session: {e}"
+                                            )));
                                         }
                                     }
                                 }
@@ -355,8 +368,15 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                             // 检查 slash 命令
                             if let Some(cmd) = crate::slash::parse(&text) {
                                 handle_slash_command(
-                                    cmd, &state, &cmd_tx, &session_dir, &mut overlay, &mut overlay_kind, &extension_runner,
-                                ).await;
+                                    cmd,
+                                    &state,
+                                    &cmd_tx,
+                                    &session_dir,
+                                    &mut overlay,
+                                    &mut overlay_kind,
+                                    &extension_runner,
+                                )
+                                .await;
                                 continue;
                             }
 
@@ -382,13 +402,14 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     Action::OpenSessionPicker => {
                         let mgr = SessionManager::new(&session_dir);
                         if let Ok(sessions) = mgr.list().await {
-                            let items: Vec<selector::SelectItem> = sessions.into_iter().map(|s| {
-                                selector::SelectItem {
+                            let items: Vec<selector::SelectItem> = sessions
+                                .into_iter()
+                                .map(|s| selector::SelectItem {
                                     id: s.id.clone(),
                                     label: s.id.clone(),
                                     detail: format!("{} msgs, {}", s.message_count, s.cwd),
-                                }
-                            }).collect();
+                                })
+                                .collect();
                             if !items.is_empty() {
                                 overlay = Some(selector::Selector::new("Sessions", items));
                                 overlay_kind = Some(OverlayKind::SessionPicker);
@@ -398,13 +419,14 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     Action::OpenModelPicker => {
                         let models = cfg_models.clone();
                         if !models.is_empty() {
-                            let items: Vec<selector::SelectItem> = models.into_iter().map(|(prov, mid, name)| {
-                                selector::SelectItem {
+                            let items: Vec<selector::SelectItem> = models
+                                .into_iter()
+                                .map(|(prov, mid, name)| selector::SelectItem {
                                     id: format!("{}:{}", prov, mid),
                                     label: name.clone(),
                                     detail: prov.to_string(),
-                                }
-                            }).collect();
+                                })
+                                .collect();
                             overlay = Some(selector::Selector::new("Models", items));
                             overlay_kind = Some(OverlayKind::ModelPicker);
                         }
@@ -413,7 +435,9 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                         if !input.is_empty() && !is_running {
                             let text = input.text().to_string();
                             let cursor = input.cursor();
-                            if let Some((candidates, start)) = crate::complete::complete(&text, cursor, &ctx.cwd) {
+                            if let Some((candidates, start)) =
+                                crate::complete::complete(&text, cursor, &ctx.cwd)
+                            {
                                 if candidates.len() == 1 {
                                     // 单一候选：直接替换
                                     input.replace_range(start, &candidates[0].text);
@@ -421,7 +445,8 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                                     // 多个候选：显示第一个，循环
                                     input.replace_range(start, &candidates[0].text);
                                     // 显示候选数量
-                                    let hint: Vec<String> = candidates.iter()
+                                    let hint: Vec<String> = candidates
+                                        .iter()
                                         .take(8)
                                         .map(|c| c.display.clone())
                                         .collect();
@@ -482,12 +507,8 @@ async fn run_agent_turn(
 
     // 创建 driver
     let driver: Box<dyn LlmDriver> = match ctx.api_type.as_str() {
-        "openai-completions" | "openai-responses" => {
-            Box::new(pi_llm::openai::OpenAiDriver::new())
-        }
-        "google-gemini" | "gemini" => {
-            Box::new(pi_llm::gemini::GeminiDriver::new())
-        }
+        "openai-completions" | "openai-responses" => Box::new(pi_llm::openai::OpenAiDriver::new()),
+        "google-gemini" | "gemini" => Box::new(pi_llm::gemini::GeminiDriver::new()),
         _ => Box::new(pi_llm::providers::AnthropicDriver::new()),
     };
 
@@ -505,7 +526,12 @@ async fn run_agent_turn(
             StreamEvent::ToolCallStart { name, .. } => {
                 sink_state.set_state(AgentState::ToolRunning { name });
             }
-            StreamEvent::ToolResult { name, output, is_error, .. } => {
+            StreamEvent::ToolResult {
+                name,
+                output,
+                is_error,
+                ..
+            } => {
                 sink_state.push_tool_result(&name, &output, is_error);
                 sink_state.set_state(AgentState::Thinking);
             }
@@ -542,7 +568,8 @@ async fn run_agent_turn(
     // 临时 dummy session 用于 std::mem::replace
     // AgentLoop takes ownership of session，run 后通过 into_session() 取回
     let dummy_path = std::env::temp_dir().join(format!("piso-dummy-{}", std::process::id()));
-    let dummy_session = JsonlSession::create(&dummy_path, "").await
+    let dummy_session = JsonlSession::create(&dummy_path, "")
+        .await
         .unwrap_or_else(|_| panic!("Failed to create dummy session"));
 
     let mut agent = AgentLoop::new(
@@ -584,9 +611,7 @@ async fn run_agent_turn(
             "openai-completions" | "openai-responses" => {
                 Box::new(pi_llm::openai::OpenAiDriver::new())
             }
-            "google-gemini" | "gemini" => {
-                Box::new(pi_llm::gemini::GeminiDriver::new())
-            }
+            "google-gemini" | "gemini" => Box::new(pi_llm::gemini::GeminiDriver::new()),
             _ => Box::new(pi_llm::providers::AnthropicDriver::new()),
         };
         match pi_agent::compaction::compact(
@@ -595,7 +620,9 @@ async fn run_agent_turn(
             &ctx.model,
             &ctx.api_key,
             &ctx.base_url,
-        ).await {
+        )
+        .await
+        {
             Ok(true) => tracing::info!("[compaction] completed"),
             Ok(false) => {}
             Err(e) => tracing::warn!("[compaction] failed: {e}"),
@@ -637,9 +664,14 @@ fn load_history(session: &JsonlSession, state: &AppState) {
                         // 提取工具结果
                         for block in msg.content.as_array().into_iter().flatten() {
                             if block.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
-                                let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
-                                let output = block.get("content").and_then(|v| v.as_str()).unwrap_or("");
-                                let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
+                                let name =
+                                    block.get("name").and_then(|v| v.as_str()).unwrap_or("tool");
+                                let output =
+                                    block.get("content").and_then(|v| v.as_str()).unwrap_or("");
+                                let is_error = block
+                                    .get("is_error")
+                                    .and_then(|v| v.as_bool())
+                                    .unwrap_or(false);
                                 state.push_tool_result(name, output, is_error);
                             }
                         }
@@ -659,12 +691,16 @@ fn load_history(session: &JsonlSession, state: &AppState) {
 
 /// 从 JSON content 数组提取纯文本。
 fn extract_text_from_content(content: &serde_json::Value) -> String {
-    content.as_array()
+    content
+        .as_array()
         .map(|arr| {
             arr.iter()
                 .filter_map(|block| {
                     if block.get("type").and_then(|v| v.as_str()) == Some("text") {
-                        block.get("text").and_then(|v| v.as_str()).map(|s| s.to_string())
+                        block
+                            .get("text")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
                     } else {
                         None
                     }
@@ -677,10 +713,12 @@ fn extract_text_from_content(content: &serde_json::Value) -> String {
 
 /// 检查 content 是否包含 tool_result 块。
 fn has_tool_results(content: &serde_json::Value) -> bool {
-    content.as_array()
-        .map(|arr| arr.iter().any(|block| {
-            block.get("type").and_then(|v| v.as_str()) == Some("tool_result")
-        }))
+    content
+        .as_array()
+        .map(|arr| {
+            arr.iter()
+                .any(|block| block.get("type").and_then(|v| v.as_str()) == Some("tool_result"))
+        })
         .unwrap_or(false)
 }
 
@@ -751,7 +789,9 @@ async fn handle_slash_command(
                 None => {
                     // 打开模型选择器 — 通过触发 overlay
                     // 需要调用方来处理，简化版：显示提示
-                    state.push_system("Use Ctrl+P to open model picker, or /model <name> to switch directly.");
+                    state.push_system(
+                        "Use Ctrl+P to open model picker, or /model <name> to switch directly.",
+                    );
                 }
             }
         }
@@ -769,7 +809,13 @@ async fn handle_slash_command(
             drop(f);
             let cost = pi_agent::cost::estimate_cost(&model, in_t as u64, out_t as u64);
             let cost_str = pi_agent::cost::format_cost(cost);
-            state.push_system(&format!("Token usage: {} input, {} output, {} total | Estimated cost: {}", in_t, out_t, in_t + out_t, cost_str));
+            state.push_system(&format!(
+                "Token usage: {} input, {} output, {} total | Estimated cost: {}",
+                in_t,
+                out_t,
+                in_t + out_t,
+                cost_str
+            ));
         }
         SlashCommand::Cost => {
             let f = state.footer.read();
@@ -802,14 +848,23 @@ async fn handle_slash_command(
                         // 搜索 session ID 和 CWD
                         let haystack = format!("{} {}", sess.id, sess.cwd).to_lowercase();
                         if haystack.contains(&term_lower) {
-                            results.push(format!("{} ({} msgs, {})", sess.id, sess.message_count, sess.cwd));
-                            if results.len() >= 20 { break; }
+                            results.push(format!(
+                                "{} ({} msgs, {})",
+                                sess.id, sess.message_count, sess.cwd
+                            ));
+                            if results.len() >= 20 {
+                                break;
+                            }
                         }
                     }
                     if results.is_empty() {
                         state.push_system(&format!("No sessions matching '{}'", term));
                     } else {
-                        state.push_system(&format!("Found {} sessions:\n{}", results.len(), results.join("\n")));
+                        state.push_system(&format!(
+                            "Found {} sessions:\n{}",
+                            results.len(),
+                            results.join("\n")
+                        ));
                     }
                 }
                 Err(e) => state.push_system(&format!("Search failed: {e}")),
@@ -830,14 +885,25 @@ async fn handle_slash_command(
                     } else {
                         entry.content.clone()
                     };
-                    matches.push(format!("[{}] {}: {}", i, entry.role, preview.replace('\n', " ")));
-                    if matches.len() >= 20 { break; }
+                    matches.push(format!(
+                        "[{}] {}: {}",
+                        i,
+                        entry.role,
+                        preview.replace('\n', " ")
+                    ));
+                    if matches.len() >= 20 {
+                        break;
+                    }
                 }
             }
             if matches.is_empty() {
                 state.push_system(&format!("No messages matching '{}'", term));
             } else {
-                state.push_system(&format!("Found {} messages:\n{}", matches.len(), matches.join("\n")));
+                state.push_system(&format!(
+                    "Found {} messages:\n{}",
+                    matches.len(),
+                    matches.join("\n")
+                ));
             }
         }
         SlashCommand::NewSession => {
@@ -846,7 +912,8 @@ async fn handle_slash_command(
         }
         SlashCommand::Reload => {
             // 重载快捷键和主题
-            let kb_path = std::env::var("HOME").ok()
+            let kb_path = std::env::var("HOME")
+                .ok()
                 .map(|h| std::path::PathBuf::from(h).join(".piso/keybindings.json"))
                 .unwrap_or_default();
             if kb_path.exists() {
@@ -859,12 +926,19 @@ async fn handle_slash_command(
         SlashCommand::Copy => {
             // 找到最后一条 assistant 消息
             let entries = state.entries.read();
-            let last_assistant = entries.iter().rev().find(|e| matches!(e.role, crate::app::ChatRole::Assistant));
+            let last_assistant = entries
+                .iter()
+                .rev()
+                .find(|e| matches!(e.role, crate::app::ChatRole::Assistant));
             if let Some(entry) = last_assistant {
                 let text = entry.content.clone();
                 drop(entries);
                 // 尝试复制到剪贴板
-                match std::process::Command::new("xclip").args(["-selection", "clipboard"]).stdin(std::process::Stdio::piped()).spawn() {
+                match std::process::Command::new("xclip")
+                    .args(["-selection", "clipboard"])
+                    .stdin(std::process::Stdio::piped())
+                    .spawn()
+                {
                     Ok(mut child) => {
                         if let Some(stdin) = child.stdin.as_mut() {
                             use std::io::Write;
@@ -875,17 +949,25 @@ async fn handle_slash_command(
                     }
                     Err(_) => {
                         // xclip 不可用，尝试 pbcopy (macOS)
-                        match std::process::Command::new("pbcopy").stdin(std::process::Stdio::piped()).spawn() {
+                        match std::process::Command::new("pbcopy")
+                            .stdin(std::process::Stdio::piped())
+                            .spawn()
+                        {
                             Ok(mut child) => {
                                 if let Some(stdin) = child.stdin.as_mut() {
                                     use std::io::Write;
                                     let _ = stdin.write_all(text.as_bytes());
                                 }
                                 let _ = child.wait();
-                                state.push_system(&format!("Copied {} chars to clipboard", text.len()));
+                                state.push_system(&format!(
+                                    "Copied {} chars to clipboard",
+                                    text.len()
+                                ));
                             }
                             Err(_) => {
-                                state.push_system("No clipboard tool found (install xclip or pbcopy)");
+                                state.push_system(
+                                    "No clipboard tool found (install xclip or pbcopy)",
+                                );
                             }
                         }
                     }
@@ -905,9 +987,18 @@ async fn handle_slash_command(
         SlashCommand::SessionInfo => {
             let entries = state.entries.read();
             let footer = state.footer.read();
-            let user_count = entries.iter().filter(|e| matches!(e.role, crate::app::ChatRole::User)).count();
-            let assistant_count = entries.iter().filter(|e| matches!(e.role, crate::app::ChatRole::Assistant)).count();
-            let tool_count = entries.iter().filter(|e| matches!(e.role, crate::app::ChatRole::Tool { .. })).count();
+            let user_count = entries
+                .iter()
+                .filter(|e| matches!(e.role, crate::app::ChatRole::User))
+                .count();
+            let assistant_count = entries
+                .iter()
+                .filter(|e| matches!(e.role, crate::app::ChatRole::Assistant))
+                .count();
+            let tool_count = entries
+                .iter()
+                .filter(|e| matches!(e.role, crate::app::ChatRole::Tool { .. }))
+                .count();
             drop(entries);
             state.push_system(&format!(
                 "Session info:\n  Messages: {} user, {} assistant, {} tool\n  Model: {} ({})\n  Tokens: {} in, {} out\n  Total entries: {}",
@@ -937,13 +1028,14 @@ async fn handle_slash_command(
         SlashCommand::Sessions => {
             let mgr = SessionManager::new(session_dir);
             if let Ok(sessions) = mgr.list().await {
-                let items: Vec<crate::selector::SelectItem> = sessions.into_iter().map(|s| {
-                    crate::selector::SelectItem {
+                let items: Vec<crate::selector::SelectItem> = sessions
+                    .into_iter()
+                    .map(|s| crate::selector::SelectItem {
                         id: s.id.clone(),
                         label: s.id.clone(),
                         detail: format!("{} msgs, {}", s.message_count, s.cwd),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 if !items.is_empty() {
                     *overlay = Some(crate::selector::Selector::new("Sessions", items));
                     *overlay_kind = Some(OverlayKind::SessionPicker);
@@ -957,7 +1049,10 @@ async fn handle_slash_command(
             state.push_system("Use Ctrl+C to quit.");
         }
         SlashCommand::Unknown(cmd) => {
-            state.push_system(&format!("Unknown command: /{}. Type /help for available commands.", cmd));
+            state.push_system(&format!(
+                "Unknown command: /{}. Type /help for available commands.",
+                cmd
+            ));
         }
     }
 }
@@ -967,7 +1062,11 @@ fn render_session_html_simple(entries: &std::vec::Vec<crate::app::ChatEntry>) ->
     use crate::app::ChatRole;
     let mut body = String::new();
     for entry in entries {
-        let escaped = entry.content.replace('&', "&amp;").replace('<', "&lt;").replace('>', "&gt;");
+        let escaped = entry
+            .content
+            .replace('&', "&amp;")
+            .replace('<', "&lt;")
+            .replace('>', "&gt;");
         let (class, role) = match &entry.role {
             ChatRole::User => ("user", "You"),
             ChatRole::Assistant => ("assistant", "Assistant"),
@@ -979,7 +1078,8 @@ fn render_session_html_simple(entries: &std::vec::Vec<crate::app::ChatEntry>) ->
             class, role, escaped
         ));
     }
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>piso session</title>
 <style>
 body {{ font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; background: #1a1a2e; color: #e0e0e0; }}
@@ -989,5 +1089,7 @@ body {{ font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px
 .system {{ background: #0d1117; border-left: 3px solid #ffd700; color: #aaa; font-style: italic; }}
 .role {{ font-weight: bold; font-size: 0.85em; color: #888; margin-bottom: 4px; }}
 pre {{ white-space: pre-wrap; margin: 0; }}
-</style></head><body>{}</body></html>"#, body)
+</style></head><body>{}</body></html>"#,
+        body
+    )
 }

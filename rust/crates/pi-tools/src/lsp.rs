@@ -46,7 +46,6 @@ pub struct CompletionItem {
     pub insert_text: Option<String>,
 }
 
-
 /// LSP 补全列表。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

@@ -26,7 +26,11 @@ pub enum Event {
     /// 工具调用开始。
     ToolCallStart { name: String, call_id: String },
     /// 工具调用完成。
-    ToolCallEnd { name: String, output: String, is_error: bool },
+    ToolCallEnd {
+        name: String,
+        output: String,
+        is_error: bool,
+    },
     /// Token 用量更新。
     Usage { input: u32, output: u32 },
     /// 会话切换。
@@ -44,10 +48,14 @@ impl fmt::Display for Event {
             Event::TextDelta { text } => write!(f, "TextDelta({} chars)", text.len()),
             Event::ThinkingDelta { .. } => write!(f, "ThinkingDelta"),
             Event::ToolCallStart { name, .. } => write!(f, "ToolCallStart({})", name),
-            Event::ToolCallEnd { name, is_error, .. } => write!(f, "ToolCallEnd({}, err={})", name, is_error),
+            Event::ToolCallEnd { name, is_error, .. } => {
+                write!(f, "ToolCallEnd({}, err={})", name, is_error)
+            }
             Event::Usage { input, output } => write!(f, "Usage({}/{})", input, output),
             Event::SessionSwitched { session_id } => write!(f, "SessionSwitched({})", session_id),
-            Event::ModelSwitched { provider, model } => write!(f, "ModelSwitched({}/{})", provider, model),
+            Event::ModelSwitched { provider, model } => {
+                write!(f, "ModelSwitched({}/{})", provider, model)
+            }
         }
     }
 }
@@ -99,7 +107,9 @@ mod tests {
         let bus = EventBus::new(16);
         let mut rx = bus.subscribe();
 
-        bus.emit(Event::AgentStart { prompt: "hello".into() });
+        bus.emit(Event::AgentStart {
+            prompt: "hello".into(),
+        });
 
         let event = rx.try_recv().unwrap();
         match event {
@@ -114,13 +124,28 @@ mod tests {
         let mut rx1 = bus.subscribe();
         let mut rx2 = bus.subscribe();
 
-        bus.emit(Event::Usage { input: 10, output: 20 });
+        bus.emit(Event::Usage {
+            input: 10,
+            output: 20,
+        });
 
         let e1 = rx1.try_recv().unwrap();
         let e2 = rx2.try_recv().unwrap();
 
-        assert!(matches!(e1, Event::Usage { input: 10, output: 20 }));
-        assert!(matches!(e2, Event::Usage { input: 10, output: 20 }));
+        assert!(matches!(
+            e1,
+            Event::Usage {
+                input: 10,
+                output: 20
+            }
+        ));
+        assert!(matches!(
+            e2,
+            Event::Usage {
+                input: 10,
+                output: 20
+            }
+        ));
         assert_eq!(bus.subscriber_count(), 2);
     }
 
@@ -128,12 +153,17 @@ mod tests {
     fn no_subscribers_ok() {
         let bus = EventBus::new(16);
         // 不应该 panic
-        bus.emit(Event::AgentDone { output: "ok".into() });
+        bus.emit(Event::AgentDone {
+            output: "ok".into(),
+        });
     }
 
     #[test]
     fn event_display() {
-        let e = Event::ToolCallStart { name: "bash".into(), call_id: "123".into() };
+        let e = Event::ToolCallStart {
+            name: "bash".into(),
+            call_id: "123".into(),
+        };
         assert_eq!(format!("{}", e), "ToolCallStart(bash)");
     }
 
@@ -141,7 +171,9 @@ mod tests {
     fn default_capacity() {
         let bus = EventBus::default();
         let mut rx = bus.subscribe();
-        bus.emit(Event::AgentError { error: "test".into() });
+        bus.emit(Event::AgentError {
+            error: "test".into(),
+        });
         assert!(rx.try_recv().is_ok());
     }
 }

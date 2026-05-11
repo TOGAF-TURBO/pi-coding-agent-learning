@@ -5,7 +5,7 @@
 //! 通过 HTTP 直接调用 Anthropic Messages API，使用 SSE 解析流式响应。
 //! 不依赖 Anthropic SDK，保持最小依赖。
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -18,6 +18,12 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Anthropic Messages API 驱动。
 pub struct AnthropicDriver {
     client: Client,
+}
+
+impl Default for AnthropicDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl AnthropicDriver {
@@ -39,7 +45,9 @@ impl LlmDriver for AnthropicDriver {
         let body = build_anthropic_request(&request);
         let api_key = request.api_key.clone();
 
-        let response_future = self.client.post(&base_url)
+        let response_future = self
+            .client
+            .post(&base_url)
             .header("x-api-key", &api_key)
             .header("anthropic-version", ANTHROPIC_VERSION)
             .header("content-type", "application/json")
@@ -101,25 +109,22 @@ impl LlmDriver for AnthropicDriver {
                                 current_block_index = block.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
                                 if let Some(cb) = block.get("content_block") {
                                     current_block_type = cb.get("type").and_then(|v| v.as_str()).map(|s| s.to_string());
-                                    match current_block_type.as_deref() {
-                                        Some("tool_use") => {
-                                            let id = cb.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                            let name = cb.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                                            while tool_calls.len() <= current_block_index {
-                                                tool_calls.push(ToolCallAccumulator::default());
-                                            }
-                                            tool_calls[current_block_index] = ToolCallAccumulator {
-                                                id,
-                                                name,
-                                                input_json: String::new(),
-                                            };
-                                            yield Ok(StreamEvent::ToolCallStart {
-                                                id: tool_calls[current_block_index].id.clone(),
-                                                name: tool_calls[current_block_index].name.clone(),
-                                                index: current_block_index,
-                                            });
+                                    if let Some("tool_use") = current_block_type.as_deref() {
+                                        let id = cb.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                        let name = cb.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                                        while tool_calls.len() <= current_block_index {
+                                            tool_calls.push(ToolCallAccumulator::default());
                                         }
-                                        _ => {}
+                                        tool_calls[current_block_index] = ToolCallAccumulator {
+                                            id,
+                                            name,
+                                            input_json: String::new(),
+                                        };
+                                        yield Ok(StreamEvent::ToolCallStart {
+                                            id: tool_calls[current_block_index].id.clone(),
+                                            name: tool_calls[current_block_index].name.clone(),
+                                            index: current_block_index,
+                                        });
                                     }
                                 }
                             }
@@ -154,8 +159,8 @@ impl LlmDriver for AnthropicDriver {
                             }
                         }
                         "content_block_stop" => {
-                            if current_block_type.as_deref() == Some("tool_use") {
-                                if current_block_index < tool_calls.len() {
+                            if current_block_type.as_deref() == Some("tool_use")
+                                && current_block_index < tool_calls.len() {
                                     let tc = &tool_calls[current_block_index];
                                     let input: Value = serde_json::from_str(&tc.input_json)
                                         .unwrap_or(Value::Null);
@@ -166,7 +171,6 @@ impl LlmDriver for AnthropicDriver {
                                         input,
                                     });
                                 }
-                            }
                         }
                         "message_delta" => {
                             if let Ok(delta) = serde_json::from_str::<Value>(&data) {
@@ -226,9 +230,13 @@ fn build_anthropic_request(req: &CompletionRequest) -> Value {
     for msg in &req.messages {
         match msg {
             pi_types::message::Message::User(u) => {
-                let content: Vec<Value> = u.content.iter().map(|block| {
-                    match block {
-                        pi_types::message::ContentBlock::Text(t) => json!({"type": "text", "text": t.text}),
+                let content: Vec<Value> = u
+                    .content
+                    .iter()
+                    .map(|block| match block {
+                        pi_types::message::ContentBlock::Text(t) => {
+                            json!({"type": "text", "text": t.text})
+                        }
                         pi_types::message::ContentBlock::Image(img) => json!({
                             "type": "image",
                             "source": {
@@ -244,15 +252,21 @@ fn build_anthropic_request(req: &CompletionRequest) -> Value {
                             "is_error": r.is_error,
                         }),
                         _ => json!({"type": "text", "text": "[unsupported]"}),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 messages.push(json!({"role": "user", "content": content}));
             }
             pi_types::message::Message::Assistant(a) => {
-                let content: Vec<Value> = a.content.iter().map(|block| {
-                    match block {
-                        pi_types::message::ContentBlock::Text(t) => json!({"type": "text", "text": t.text}),
-                        pi_types::message::ContentBlock::Thinking(t) => json!({"type": "thinking", "thinking": t.thinking}),
+                let content: Vec<Value> = a
+                    .content
+                    .iter()
+                    .map(|block| match block {
+                        pi_types::message::ContentBlock::Text(t) => {
+                            json!({"type": "text", "text": t.text})
+                        }
+                        pi_types::message::ContentBlock::Thinking(t) => {
+                            json!({"type": "thinking", "thinking": t.thinking})
+                        }
                         pi_types::message::ContentBlock::ToolUse(tc) => json!({
                             "type": "tool_use",
                             "id": tc.id,
@@ -260,13 +274,15 @@ fn build_anthropic_request(req: &CompletionRequest) -> Value {
                             "input": tc.input,
                         }),
                         _ => json!({"type": "text", "text": "[unsupported]"}),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 messages.push(json!({"role": "assistant", "content": content}));
             }
             pi_types::message::Message::ToolResult(tr) => {
-                let content: Vec<Value> = tr.content.iter().map(|block| {
-                    match block {
+                let content: Vec<Value> = tr
+                    .content
+                    .iter()
+                    .map(|block| match block {
                         pi_types::message::ContentBlock::ToolResult(r) => json!({
                             "type": "tool_result",
                             "tool_use_id": r.tool_use_id,
@@ -274,8 +290,8 @@ fn build_anthropic_request(req: &CompletionRequest) -> Value {
                             "is_error": r.is_error,
                         }),
                         _ => json!({"type": "text", "text": "[unsupported]"}),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 messages.push(json!({"role": "user", "content": content}));
             }
         }
@@ -293,13 +309,17 @@ fn build_anthropic_request(req: &CompletionRequest) -> Value {
     }
 
     if !req.tools.is_empty() {
-        let tools: Vec<Value> = req.tools.iter().map(|t| {
-            json!({
-                "name": t.name,
-                "description": t.description,
-                "input_schema": t.parameters,
+        let tools: Vec<Value> = req
+            .tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "input_schema": t.parameters,
+                })
             })
-        }).collect();
+            .collect();
         body["tools"] = json!(tools);
     }
 
@@ -327,8 +347,7 @@ impl SseLineParser {
     }
 
     fn feed(&mut self, bytes: &[u8]) {
-        self.buffer
-            .push_str(&String::from_utf8_lossy(bytes));
+        self.buffer.push_str(&String::from_utf8_lossy(bytes));
     }
 
     fn next_event(&mut self) -> Option<(String, String)> {

@@ -52,7 +52,11 @@ pub fn render_markdown(text: &str, base_style: Style) -> Vec<Line<'static>> {
 }
 
 /// 将 Markdown 文本渲染为 ratatui Line 列表（带自定义颜色）。
-pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdColors) -> Vec<Line<'static>> {
+pub fn render_markdown_with_colors(
+    text: &str,
+    base_style: Style,
+    colors: &MdColors,
+) -> Vec<Line<'static>> {
     let mut lines = Vec::new();
     let mut in_code_block = false;
     let mut code_lang = String::new();
@@ -65,12 +69,12 @@ pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdCol
             if in_code_block {
                 code_lang = raw_line.trim_start_matches('`').trim().to_string();
                 if !code_lang.is_empty() {
-                    lines.push(Line::from(vec![
-                        Span::styled(
-                            format!("  {}", code_lang),
-                            Style::default().fg(colors.inline_code_fg).add_modifier(Modifier::ITALIC),
-                        ),
-                    ]));
+                    lines.push(Line::from(vec![Span::styled(
+                        format!("  {}", code_lang),
+                        Style::default()
+                            .fg(colors.inline_code_fg)
+                            .add_modifier(Modifier::ITALIC),
+                    )]));
                 }
             } else {
                 code_lang.clear();
@@ -90,49 +94,48 @@ pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdCol
                 } else {
                     (' ', colors.code_fg)
                 };
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("  {}", raw_line),
-                        Style::default().fg(fg),
-                    ),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    format!("  {}", raw_line),
+                    Style::default().fg(fg),
+                )]));
             } else {
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        format!("  {}", raw_line),
-                        Style::default().fg(colors.code_fg),
-                    ),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    format!("  {}", raw_line),
+                    Style::default().fg(colors.code_fg),
+                )]));
             }
             continue;
         }
 
         // 标题
         if raw_line.starts_with("### ") {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    raw_line.strip_prefix("### ").unwrap_or(raw_line).to_string(),
-                    base_style.add_modifier(Modifier::BOLD).fg(colors.heading_fg),
-                ),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                raw_line
+                    .strip_prefix("### ")
+                    .unwrap_or(raw_line)
+                    .to_string(),
+                base_style
+                    .add_modifier(Modifier::BOLD)
+                    .fg(colors.heading_fg),
+            )]));
             continue;
         }
         if raw_line.starts_with("## ") {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    raw_line.strip_prefix("## ").unwrap_or(raw_line).to_string(),
-                    base_style.add_modifier(Modifier::BOLD).fg(colors.heading_fg),
-                ),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                raw_line.strip_prefix("## ").unwrap_or(raw_line).to_string(),
+                base_style
+                    .add_modifier(Modifier::BOLD)
+                    .fg(colors.heading_fg),
+            )]));
             continue;
         }
         if raw_line.starts_with("# ") {
-            lines.push(Line::from(vec![
-                Span::styled(
-                    raw_line.strip_prefix("# ").unwrap_or(raw_line).to_string(),
-                    base_style.add_modifier(Modifier::BOLD).fg(colors.heading_fg),
-                ),
-            ]));
+            lines.push(Line::from(vec![Span::styled(
+                raw_line.strip_prefix("# ").unwrap_or(raw_line).to_string(),
+                base_style
+                    .add_modifier(Modifier::BOLD)
+                    .fg(colors.heading_fg),
+            )]));
             continue;
         }
 
@@ -164,14 +167,18 @@ pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdCol
         let trimmed = raw_line.trim();
         if trimmed.starts_with('|') && trimmed.ends_with('|') {
             // 分隔行 (|---|---|) 跳过
-            let stripped: String = trimmed.chars().filter(|c| !matches!(c, '|' | '-' | ':' | ' ')).collect();
+            let stripped: String = trimmed
+                .chars()
+                .filter(|c| !matches!(c, '|' | '-' | ':' | ' '))
+                .collect();
             if stripped.is_empty() {
                 // 绘制水平线替代
                 let col_count = trimmed.split('|').filter(|s| !s.is_empty()).count();
                 let separator: String = std::iter::repeat_n("─", col_count * 16).collect();
-                lines.push(Line::from(vec![
-                    Span::styled(separator, Style::default().fg(Color::DarkGray)),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    separator,
+                    Style::default().fg(Color::DarkGray),
+                )]));
                 continue;
             }
             // 数据行 — 解析单元格
@@ -185,7 +192,10 @@ pub fn render_markdown_with_colors(text: &str, base_style: Style, colors: &MdCol
             spans.push(Span::styled("  ".to_string(), base_style));
             for (i, cell) in cells.iter().enumerate() {
                 if i > 0 {
-                    spans.push(Span::styled(" │ ".to_string(), Style::default().fg(Color::DarkGray)));
+                    spans.push(Span::styled(
+                        " │ ".to_string(),
+                        Style::default().fg(Color::DarkGray),
+                    ));
                 }
                 spans.push(Span::styled(cell.to_string(), base_style));
             }
@@ -216,10 +226,7 @@ fn render_inline_with_colors(line: &str, base_style: Style, colors: &MdColors) -
             '`' => {
                 // flush current
                 if !current.is_empty() {
-                    spans.push(Span::styled(
-                        std::mem::take(&mut current),
-                        base_style,
-                    ));
+                    spans.push(Span::styled(std::mem::take(&mut current), base_style));
                 }
                 // 收集到下一个 `
                 let mut code = String::new();
@@ -240,10 +247,7 @@ fn render_inline_with_colors(line: &str, base_style: Style, colors: &MdColors) -
             '*' if chars.peek() == Some(&'*') => {
                 chars.next(); // consume second *
                 if !current.is_empty() {
-                    spans.push(Span::styled(
-                        std::mem::take(&mut current),
-                        base_style,
-                    ));
+                    spans.push(Span::styled(std::mem::take(&mut current), base_style));
                 }
                 // 收集到 **
                 let mut bold = String::new();
@@ -261,19 +265,13 @@ fn render_inline_with_colors(line: &str, base_style: Style, colors: &MdColors) -
                     bold.push(chars.next().unwrap());
                 }
                 if !bold.is_empty() {
-                    spans.push(Span::styled(
-                        bold,
-                        base_style.add_modifier(Modifier::BOLD),
-                    ));
+                    spans.push(Span::styled(bold, base_style.add_modifier(Modifier::BOLD)));
                 }
             }
             '[' => {
                 // 尝试匹配 [text](url)
                 if !current.is_empty() {
-                    spans.push(Span::styled(
-                        std::mem::take(&mut current),
-                        base_style,
-                    ));
+                    spans.push(Span::styled(std::mem::take(&mut current), base_style));
                 }
                 // 收集 [text]
                 let mut link_text = String::new();
@@ -291,20 +289,21 @@ fn render_inline_with_colors(line: &str, base_style: Style, colors: &MdColors) -
                     let mut url = String::new();
                     while let Some(&c) = chars.peek() {
                         chars.next();
-                        if c == ')' { break; }
+                        if c == ')' {
+                            break;
+                        }
                         url.push(c);
                     }
                     // 渲染为带下划线的链接文本
                     spans.push(Span::styled(
                         link_text,
-                        base_style.fg(colors.inline_code_fg).add_modifier(Modifier::UNDERLINED),
+                        base_style
+                            .fg(colors.inline_code_fg)
+                            .add_modifier(Modifier::UNDERLINED),
                     ));
                 } else {
                     // 不是链接，还原 [text
-                    spans.push(Span::styled(
-                        format!("[{}", link_text),
-                        base_style,
-                    ));
+                    spans.push(Span::styled(format!("[{}", link_text), base_style));
                 }
             }
             _ => current.push(ch),

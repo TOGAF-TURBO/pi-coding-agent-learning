@@ -9,11 +9,11 @@
 //! - 用摘要替换旧消息
 
 use anyhow::Result;
+use futures::StreamExt;
 use pi_llm::driver::{CompletionRequest, LlmDriver, StreamEvent};
 use pi_session::JsonlSession;
 use pi_types::message::{ContentBlock, Message};
 use pi_types::session::SessionEntry;
-use futures::StreamExt;
 
 /// 触发压缩的条目数阈值。
 const MAX_ENTRIES: usize = 40;
@@ -46,7 +46,8 @@ pub async fn compact(
     base_url: &Option<String>,
 ) -> Result<bool> {
     let entries = session.entries().to_vec();
-    let message_entries: Vec<&SessionEntry> = entries.iter()
+    let message_entries: Vec<&SessionEntry> = entries
+        .iter()
         .filter(|e| matches!(e, SessionEntry::Message(_)))
         .collect();
 
@@ -75,7 +76,7 @@ pub async fn compact(
                 conversation_text
             ))],
         })],
-        tools: vec![],      // 不传工具
+        tools: vec![], // 不传工具
         thinking_enabled: false,
         thinking_budget: None,
         max_tokens: 2048,
@@ -120,13 +121,16 @@ fn serialize_entries(entries: &[&SessionEntry]) -> String {
     for entry in entries {
         if let SessionEntry::Message(msg) = entry {
             let role = &msg.role;
-            let text = msg.content.as_array()
+            let text = msg
+                .content
+                .as_array()
                 .map(|arr| {
                     arr.iter()
                         .filter_map(|b| {
                             if b.get("type").and_then(|v| v.as_str()) == Some("text") {
                                 b.get("text").and_then(|v| v.as_str())
-                            } else if b.get("type").and_then(|v| v.as_str()) == Some("tool_result") {
+                            } else if b.get("type").and_then(|v| v.as_str()) == Some("tool_result")
+                            {
                                 Some(b.get("content").and_then(|v| v.as_str()).unwrap_or(""))
                             } else if b.get("type").and_then(|v| v.as_str()) == Some("tool_use") {
                                 Some(b.get("name").and_then(|v| v.as_str()).unwrap_or("tool"))
@@ -166,8 +170,8 @@ mod tests {
 
     #[test]
     fn serialize_entries_format() {
-        let entries = vec![
-            pi_types::session::SessionEntry::Message(pi_types::session::MessageEntry {
+        let entries = vec![pi_types::session::SessionEntry::Message(
+            pi_types::session::MessageEntry {
                 entry_type: "message".to_string(),
                 id: "1".to_string(),
                 parent_id: None,
@@ -175,10 +179,10 @@ mod tests {
                 role: "user".to_string(),
                 content: serde_json::json!([{ "type": "text", "text": "hello" }]),
                 model: None,
-                        stop_reason: None,
-                        usage: None,
-            }),
-        ];
+                stop_reason: None,
+                usage: None,
+            },
+        )];
         let refs: Vec<&pi_types::session::SessionEntry> = entries.iter().collect();
         let result = serialize_entries(&refs);
         assert!(result.contains("user"));

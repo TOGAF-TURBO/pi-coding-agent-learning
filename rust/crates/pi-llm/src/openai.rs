@@ -9,7 +9,7 @@
 //! - 思考内容在 `delta.reasoning_content` 或 `delta.reasoning` 中
 //! - 停止信号是 `data: [DONE]`
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -53,7 +53,9 @@ fn accumulate_tool_calls(tool_calls: &mut Vec<OpenAiToolCall>, delta: &Value) {
 /// 将累积的 tool calls 转为 (index, id, name, input) 列表。
 fn take_tool_calls(tool_calls: &mut Vec<OpenAiToolCall>) -> Vec<(usize, String, String, Value)> {
     let calls = std::mem::take(tool_calls);
-    calls.into_iter().enumerate()
+    calls
+        .into_iter()
+        .enumerate()
         .filter(|(_, tc)| !tc.id.is_empty() || !tc.name.is_empty())
         .map(|(i, tc)| {
             let input: Value = serde_json::from_str(&tc.arguments_json).unwrap_or(Value::Null);
@@ -92,7 +94,8 @@ impl LlmDriver for OpenAiDriver {
         let body = build_openai_request(&request);
         let api_key = request.api_key.clone();
 
-        let response_future = self.client
+        let response_future = self
+            .client
             .post(&base_url)
             .header("authorization", format!("Bearer {api_key}"))
             .header("content-type", "application/json")
@@ -219,8 +222,14 @@ pub fn parse_openai_events(chunk: &Value) -> Option<Vec<StreamEvent>> {
     // 用量
     if let Some(usage) = chunk.get("usage") {
         events.push(StreamEvent::Usage(pi_types::message::Usage {
-            input_tokens: usage.get("prompt_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-            output_tokens: usage.get("completion_tokens").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
+            input_tokens: usage
+                .get("prompt_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
+            output_tokens: usage
+                .get("completion_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
             ..Default::default()
         }));
     }
@@ -241,7 +250,9 @@ pub fn parse_openai_events(chunk: &Value) -> Option<Vec<StreamEvent>> {
         // 文本内容
         if let Some(content) = delta.get("content").and_then(|v| v.as_str()) {
             if !content.is_empty() {
-                events.push(StreamEvent::TextDelta { text: content.to_string() });
+                events.push(StreamEvent::TextDelta {
+                    text: content.to_string(),
+                });
             }
         }
 
@@ -249,7 +260,9 @@ pub fn parse_openai_events(chunk: &Value) -> Option<Vec<StreamEvent>> {
         for field in &["reasoning_content", "reasoning"] {
             if let Some(thinking) = delta.get(field).and_then(|v| v.as_str()) {
                 if !thinking.is_empty() {
-                    events.push(StreamEvent::ThinkingDelta { thinking: thinking.to_string() });
+                    events.push(StreamEvent::ThinkingDelta {
+                        thinking: thinking.to_string(),
+                    });
                 }
             }
         }
@@ -289,7 +302,11 @@ pub fn build_openai_request(req: &CompletionRequest) -> Value {
                         pi_types::message::ContentBlock::ToolResult(r) => {
                             // 先 flush 之前的文本
                             if !texts.is_empty() {
-                                let text = texts.iter().filter_map(|v| v.as_str()).collect::<Vec<_>>().join("");
+                                let text = texts
+                                    .iter()
+                                    .filter_map(|v| v.as_str())
+                                    .collect::<Vec<_>>()
+                                    .join("");
                                 messages.push(json!({"role": "user", "content": text}));
                                 texts.clear();
                             }
@@ -301,7 +318,10 @@ pub fn build_openai_request(req: &CompletionRequest) -> Value {
                             }));
                         }
                         pi_types::message::ContentBlock::Image(img) => {
-                            texts.push(json!(format!("data:{};base64,{}", img.media_type, img.data)));
+                            texts.push(json!(format!(
+                                "data:{};base64,{}",
+                                img.media_type, img.data
+                            )));
                         }
                         _ => {}
                     }
@@ -337,7 +357,8 @@ pub fn build_openai_request(req: &CompletionRequest) -> Value {
                     }
                 }
 
-                let text = content_parts.into_iter()
+                let text = content_parts
+                    .into_iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
                     .collect::<Vec<_>>()
                     .join("");
@@ -375,16 +396,20 @@ pub fn build_openai_request(req: &CompletionRequest) -> Value {
     });
 
     if !req.tools.is_empty() {
-        let tools: Vec<Value> = req.tools.iter().map(|t| {
-            json!({
-                "type": "function",
-                "function": {
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
-                }
+        let tools: Vec<Value> = req
+            .tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "type": "function",
+                    "function": {
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    }
+                })
             })
-        }).collect();
+            .collect();
         body["tools"] = json!(tools);
     }
 
@@ -408,7 +433,9 @@ pub(crate) struct OpenAiSseParser {
 
 impl OpenAiSseParser {
     pub(crate) fn new() -> Self {
-        Self { buffer: String::new() }
+        Self {
+            buffer: String::new(),
+        }
     }
 
     pub(crate) fn feed(&mut self, bytes: &[u8]) {
@@ -514,8 +541,15 @@ mod tests {
             }
         });
         let events = parse_openai_events(&chunk).unwrap();
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::Stop { reason: Some(pi_types::message::StopReason::ToolUse) })));
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::Usage(u) if u.input_tokens == 100)));
+        assert!(events.iter().any(|e| matches!(
+            e,
+            StreamEvent::Stop {
+                reason: Some(pi_types::message::StopReason::ToolUse)
+            }
+        )));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::Usage(u) if u.input_tokens == 100)));
     }
 
     #[test]
@@ -533,9 +567,9 @@ mod tests {
         assert_eq!(tc[0].arguments_json, "false");
 
         // chunk 2: arguments continuation
-        let delta2: Value = serde_json::from_str(
-            r#"{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]}"#
-        ).unwrap();
+        let delta2: Value =
+            serde_json::from_str(r#"{"tool_calls":[{"index":0,"function":{"arguments":"}"}}]}"#)
+                .unwrap();
         accumulate_tool_calls(&mut tc, &delta2);
         assert_eq!(tc[0].arguments_json, "false}");
 
@@ -579,7 +613,9 @@ mod tests {
             thinking_budget: None,
             max_tokens: 4096,
             api_key: String::new(),
-            base_url: Some("https://open.bigmodel.cn/api/coding/paas/v4/chat/completions".to_string()),
+            base_url: Some(
+                "https://open.bigmodel.cn/api/coding/paas/v4/chat/completions".to_string(),
+            ),
         };
         let body = build_openai_request(&req);
         assert_eq!(body["model"], "glm-5.1");

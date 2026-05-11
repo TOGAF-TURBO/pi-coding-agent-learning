@@ -189,7 +189,11 @@ impl ExtensionRunner {
 
     /// 获取所有已注册的命令名。
     pub fn command_names(&self) -> Vec<&str> {
-        self.hooks.commands.iter().map(|c| c.name.as_str()).collect()
+        self.hooks
+            .commands
+            .iter()
+            .map(|c| c.name.as_str())
+            .collect()
     }
 
     /// 尝试自定义消息渲染。

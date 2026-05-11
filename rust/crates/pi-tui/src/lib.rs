@@ -16,8 +16,8 @@ pub mod theme;
 
 pub use app::AppState;
 pub use engine::TuiEngine;
-pub use input::InputEditor;
 pub use eventbus::EventBus;
+pub use input::InputEditor;
 pub use interactive::{run_interactive, InteractiveConfig};
 pub use keybinding::KeyBindings;
 pub use theme::Theme;

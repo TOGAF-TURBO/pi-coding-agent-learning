@@ -8,7 +8,6 @@
 //! 扩展通过 `ExtensionFactory` 工厂函数注册，类似于 TS 版的
 //! `export default function(pi: ExtensionAPI) { ... }`。
 
-
 /// 扩展工厂函数类型。
 /// 接收 ExtensionApi 引用，在函数内注册钩子/工具/命令。
 pub type ExtensionFactory = fn(&mut dyn ExtensionApi);
@@ -99,10 +98,7 @@ pub trait ExtensionApi {
 
     /// 注册编辑器组件 — 注入自定义提示文本到编辑区。
     /// handler 返回要显示的提示字符串（如状态信息）。
-    fn register_editor_hint(
-        &mut self,
-        handler: Box<dyn Fn() -> String + Send + Sync>,
-    );
+    fn register_editor_hint(&mut self, handler: Box<dyn Fn() -> String + Send + Sync>);
 
     /// 获取扩展存储（持久化键值对）。
     fn store(&self) -> &ExtensionStore;
@@ -385,10 +381,7 @@ impl ExtensionApi for BasicExtensionApi {
         self.hooks.message_renderers.push(handler);
     }
 
-    fn register_editor_hint(
-        &mut self,
-        handler: Box<dyn Fn() -> String + Send + Sync>,
-    ) {
+    fn register_editor_hint(&mut self, handler: Box<dyn Fn() -> String + Send + Sync>) {
         self.hooks.editor_hints.push(handler);
     }
 
@@ -427,11 +420,15 @@ impl ExtensionApi for BasicExtensionApi {
     }
 
     fn send_message(&mut self, content: &str) {
-        self.hooks.pending_messages.push(("assistant".to_string(), content.to_string()));
+        self.hooks
+            .pending_messages
+            .push(("assistant".to_string(), content.to_string()));
     }
 
     fn send_user_message(&mut self, content: &str) {
-        self.hooks.pending_messages.push(("user".to_string(), content.to_string()));
+        self.hooks
+            .pending_messages
+            .push(("user".to_string(), content.to_string()));
     }
 
     fn set_session_name(&mut self, name: &str) {

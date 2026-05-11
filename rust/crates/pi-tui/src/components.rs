@@ -31,7 +31,9 @@ pub fn render_header(
     let mut spans = vec![
         Span::styled(
             " piso ",
-            Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(Color::Cyan)
+                .add_modifier(Modifier::BOLD),
         ),
         Span::styled(
             format!("{} ({})", model, provider),
@@ -113,16 +115,17 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
         let (prefix, style) = match &entry.role {
             ChatRole::User => (
                 "You",
-                Style::default().fg(Color::Green).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
             ),
             ChatRole::Assistant => (
                 "Assistant",
-                Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD),
+                Style::default()
+                    .fg(Color::Cyan)
+                    .add_modifier(Modifier::BOLD),
             ),
-            ChatRole::System => (
-                "System",
-                Style::default().fg(Color::Yellow),
-            ),
+            ChatRole::System => ("System", Style::default().fg(Color::Yellow)),
             ChatRole::Tool { name, is_error } => (
                 name.as_str(),
                 if *is_error {
@@ -134,18 +137,15 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
         };
 
         // 头部行
-        lines.push(Line::from(vec![
-            Span::styled(format!(" {} ", prefix), style),
-        ]));
+        lines.push(Line::from(vec![Span::styled(
+            format!(" {} ", prefix),
+            style,
+        )]));
 
         // 内容行 — 自动换行
         let content_style = match &entry.role {
-            ChatRole::Tool { is_error, .. } if *is_error => {
-                Style::default().fg(Color::Red)
-            }
-            ChatRole::Tool { .. } => {
-                Style::default().fg(Color::Gray)
-            }
+            ChatRole::Tool { is_error, .. } if *is_error => Style::default().fg(Color::Red),
+            ChatRole::Tool { .. } => Style::default().fg(Color::Gray),
             _ => Style::default(),
         };
 
@@ -154,9 +154,7 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
             let md_lines = render_markdown(&entry.content, content_style);
             for md_line in md_lines {
                 // 在每个 span 前添加缩进，保留 markdown 样式
-                let mut spans: Vec<Span<'static>> = vec![
-                    Span::raw("   ")
-                ];
+                let mut spans: Vec<Span<'static>> = vec![Span::raw("   ")];
                 for s in md_line.spans {
                     spans.push(Span::styled(s.content, s.style));
                 }
@@ -192,17 +190,16 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
     let footer_state = state.footer.read();
     match &footer_state.state {
         AgentState::Thinking => {
-            lines.push(Line::from(
-                Span::styled(" ● Thinking...", Style::default().fg(Color::Yellow)),
-            ));
+            lines.push(Line::from(Span::styled(
+                " ● Thinking...",
+                Style::default().fg(Color::Yellow),
+            )));
         }
         AgentState::ToolRunning { name } => {
-            lines.push(Line::from(
-                Span::styled(
-                    format!(" ● Running {}...", name),
-                    Style::default().fg(Color::Magenta),
-                ),
-            ));
+            lines.push(Line::from(Span::styled(
+                format!(" ● Running {}...", name),
+                Style::default().fg(Color::Magenta),
+            )));
         }
         _ => {}
     }
@@ -273,7 +270,11 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         }
     } else if footer.duration_secs > 0 {
         if footer.duration_secs >= 60 {
-            format!(" | {}m{}s", footer.duration_secs / 60, footer.duration_secs % 60)
+            format!(
+                " | {}m{}s",
+                footer.duration_secs / 60,
+                footer.duration_secs % 60
+            )
         } else {
             format!(" | {}s", footer.duration_secs)
         }
@@ -284,25 +285,18 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
     let mut line_spans = vec![
         Span::styled(
             format!(" {}", state_text),
-            Style::default().fg(state_color).add_modifier(Modifier::BOLD),
+            Style::default()
+                .fg(state_color)
+                .add_modifier(Modifier::BOLD),
         ),
-        Span::styled(
-            tokens,
-            Style::default().fg(Color::DarkGray),
-        ),
+        Span::styled(tokens, Style::default().fg(Color::DarkGray)),
     ];
 
     if let Some(ctx_color) = ctx.1 {
-        line_spans.push(Span::styled(
-            ctx.0,
-            Style::default().fg(ctx_color),
-        ));
+        line_spans.push(Span::styled(ctx.0, Style::default().fg(ctx_color)));
     }
 
-    line_spans.push(Span::styled(
-        elapsed,
-        Style::default().fg(Color::DarkGray),
-    ));
+    line_spans.push(Span::styled(elapsed, Style::default().fg(Color::DarkGray)));
 
     let line = Line::from(line_spans);
 
@@ -311,7 +305,13 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
 }
 
 /// 渲染 editor 区域 — 多行支持。
-pub fn render_editor(f: &mut ratatui::Frame, area: Rect, input: &str, cursor: bool, is_running: bool) {
+pub fn render_editor(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    input: &str,
+    cursor: bool,
+    is_running: bool,
+) {
     if input.is_empty() {
         let hint = if is_running {
             "Waiting for agent..."
@@ -352,20 +352,31 @@ pub fn render_editor(f: &mut ratatui::Frame, area: Rect, input: &str, cursor: bo
         }
         let last_line = text_before_cursor.lines().last().unwrap_or("");
         let col = (unicode_width_str(last_line) as u16) % area_width.max(1);
-        f.set_cursor_position((area.x + 1 + col, area.y + 1 + row.min(area.height.saturating_sub(2))));
+        f.set_cursor_position((
+            area.x + 1 + col,
+            area.y + 1 + row.min(area.height.saturating_sub(2)),
+        ));
     }
 
     f.render_widget(para, area);
 }
 
 /// 渲染 footer 区域。
-pub fn render_footer(f: &mut ratatui::Frame, area: Rect, _is_running: bool, hints: &[(&'static str, String)]) {
+pub fn render_footer(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    _is_running: bool,
+    hints: &[(&'static str, String)],
+) {
     let mut spans = Vec::new();
     for (tag, text) in hints {
         if *tag == "key" {
             spans.push(Span::styled(text.clone(), Style::default().fg(Color::Cyan)));
         } else {
-            spans.push(Span::styled(text.clone(), Style::default().fg(Color::DarkGray)));
+            spans.push(Span::styled(
+                text.clone(),
+                Style::default().fg(Color::DarkGray),
+            ));
         }
     }
     let para = Paragraph::new(Line::from(spans));

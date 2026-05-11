@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolResult, ToolExecutor};
+use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
 
 /// 扩展工具 — 从闭包适配到 ToolExecutor。
 pub struct ExtensionTool {
@@ -70,11 +70,9 @@ mod tests {
 
     #[tokio::test]
     async fn extension_tool_execute() {
-        let tool = ExtensionTool::new(
-            "echo",
-            "Echo back the input",
-            |input| Ok(format!("echo: {}", input)),
-        );
+        let tool = ExtensionTool::new("echo", "Echo back the input", |input| {
+            Ok(format!("echo: {}", input))
+        });
 
         assert_eq!(tool.definition().name, "echo");
 
@@ -85,11 +83,9 @@ mod tests {
 
     #[tokio::test]
     async fn extension_tool_error() {
-        let tool = ExtensionTool::new(
-            "fail",
-            "Always fails",
-            |_| Err("intentional error".to_string()),
-        );
+        let tool = ExtensionTool::new("fail", "Always fails", |_| {
+            Err("intentional error".to_string())
+        });
 
         let result = tool.execute(serde_json::json!({})).await.unwrap();
         assert!(result.is_error);

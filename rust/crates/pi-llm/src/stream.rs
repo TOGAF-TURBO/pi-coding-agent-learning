@@ -8,7 +8,9 @@ mod tests {
 
     #[test]
     fn stream_event_serialization() {
-        let event = StreamEvent::TextDelta { text: "hello".to_string() };
+        let event = StreamEvent::TextDelta {
+            text: "hello".to_string(),
+        };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("text_delta"));
         assert!(json.contains("hello"));
@@ -16,7 +18,9 @@ mod tests {
 
     #[test]
     fn stream_event_thinking_delta() {
-        let event = StreamEvent::ThinkingDelta { thinking: "deep thought".to_string() };
+        let event = StreamEvent::ThinkingDelta {
+            thinking: "deep thought".to_string(),
+        };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("thinking_delta"));
     }
@@ -48,7 +52,9 @@ mod tests {
 
     #[test]
     fn stream_event_stop() {
-        let event = StreamEvent::Stop { reason: Some(pi_types::message::StopReason::Stop) };
+        let event = StreamEvent::Stop {
+            reason: Some(pi_types::message::StopReason::Stop),
+        };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("stop"));
     }

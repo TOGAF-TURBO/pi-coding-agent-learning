@@ -49,19 +49,15 @@ impl ToolExecutor for WriteTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult, PiError> {
-        let path = input["path"]
-            .as_str()
-            .ok_or_else(|| PiError::Tool {
-                tool: "write".to_string(),
-                message: "missing 'path' parameter".to_string(),
-            })?;
+        let path = input["path"].as_str().ok_or_else(|| PiError::Tool {
+            tool: "write".to_string(),
+            message: "missing 'path' parameter".to_string(),
+        })?;
 
-        let content = input["content"]
-            .as_str()
-            .ok_or_else(|| PiError::Tool {
-                tool: "write".to_string(),
-                message: "missing 'content' parameter".to_string(),
-            })?;
+        let content = input["content"].as_str().ok_or_else(|| PiError::Tool {
+            tool: "write".to_string(),
+            message: "missing 'content' parameter".to_string(),
+        })?;
 
         // 读取旧内容（如果存在）用于 diff
         let old_content = fs::read_to_string(path).await.ok().unwrap_or_default();
@@ -69,10 +65,12 @@ impl ToolExecutor for WriteTool {
         // 自动创建父目录
         if let Some(parent) = std::path::Path::new(path).parent() {
             if !parent.as_os_str().is_empty() {
-                fs::create_dir_all(parent).await.map_err(|e| PiError::Tool {
-                    tool: "write".to_string(),
-                    message: format!("failed to create parent directory: {e}"),
-                })?;
+                fs::create_dir_all(parent)
+                    .await
+                    .map_err(|e| PiError::Tool {
+                        tool: "write".to_string(),
+                        message: format!("failed to create parent directory: {e}"),
+                    })?;
             }
         }
 
@@ -100,7 +98,10 @@ impl ToolExecutor for WriteTool {
 
         Ok(ToolResult {
             tool_use_id: String::new(),
-            output: format!("Wrote {} bytes, {} lines to {}{}", byte_count, line_count, path, diff_display),
+            output: format!(
+                "Wrote {} bytes, {} lines to {}{}",
+                byte_count, line_count, path, diff_display
+            ),
             is_error: false,
             duration_ms: None,
         })
@@ -118,10 +119,13 @@ mod tests {
         let path = dir.path().join("output.txt");
 
         let tool = WriteTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": path.to_string_lossy(),
-            "content": "hello world"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": path.to_string_lossy(),
+                "content": "hello world"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error);
         let content = tokio::fs::read_to_string(&path).await.unwrap();
@@ -134,10 +138,13 @@ mod tests {
         let path = dir.path().join("a").join("b").join("file.txt");
 
         let tool = WriteTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": path.to_string_lossy(),
-            "content": "nested"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": path.to_string_lossy(),
+                "content": "nested"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error);
         let content = tokio::fs::read_to_string(&path).await.unwrap();

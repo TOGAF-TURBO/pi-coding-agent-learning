@@ -15,19 +15,15 @@ use serde::{Deserialize, Serialize};
 /// 思考级别，控制模型推理深度。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
+#[derive(Default)]
 pub enum ThinkingLevel {
+    #[default]
     Off,
     Minimal,
     Low,
     Medium,
     High,
     Xhigh,
-}
-
-impl Default for ThinkingLevel {
-    fn default() -> Self {
-        Self::Off
-    }
 }
 
 impl ThinkingLevel {
@@ -137,12 +133,14 @@ pub enum ContentBlock {
 
 impl ContentBlock {
     pub fn text(s: impl Into<String>) -> Self {
-        Self::Text(TextContent {
-            text: s.into(),
-        })
+        Self::Text(TextContent { text: s.into() })
     }
 
-    pub fn tool_call(id: impl Into<String>, name: impl Into<String>, input: serde_json::Value) -> Self {
+    pub fn tool_call(
+        id: impl Into<String>,
+        name: impl Into<String>,
+        input: serde_json::Value,
+    ) -> Self {
         Self::ToolUse(ToolCall {
             id: id.into(),
             name: name.into(),
@@ -150,7 +148,11 @@ impl ContentBlock {
         })
     }
 
-    pub fn tool_result(tool_use_id: impl Into<String>, content: impl Into<String>, is_error: bool) -> Self {
+    pub fn tool_result(
+        tool_use_id: impl Into<String>,
+        content: impl Into<String>,
+        is_error: bool,
+    ) -> Self {
         Self::ToolResult(ToolResult {
             tool_use_id: tool_use_id.into(),
             content: content.into(),
@@ -248,7 +250,11 @@ impl Message {
         })
     }
 
-    pub fn tool_result(tool_use_id: impl Into<String>, output: impl Into<String>, is_error: bool) -> Self {
+    pub fn tool_result(
+        tool_use_id: impl Into<String>,
+        output: impl Into<String>,
+        is_error: bool,
+    ) -> Self {
         Self::ToolResult(ToolResultMessage {
             role: "tool_result".to_string(),
             content: vec![ContentBlock::tool_result(tool_use_id, output, is_error)],

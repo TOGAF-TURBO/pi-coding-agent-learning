@@ -59,17 +59,47 @@ pub struct KeyBindings {
 impl KeyBindings {
     pub fn defaults() -> Self {
         Self {
-            submit: Some(KeyBinding { modifiers: "ctrl".into(), key: "o".into() }),
-            quit: Some(KeyBinding { modifiers: "ctrl".into(), key: "c".into() }),
-            cancel: Some(KeyBinding { modifiers: "none".into(), key: "esc".into() }),
+            submit: Some(KeyBinding {
+                modifiers: "ctrl".into(),
+                key: "o".into(),
+            }),
+            quit: Some(KeyBinding {
+                modifiers: "ctrl".into(),
+                key: "c".into(),
+            }),
+            cancel: Some(KeyBinding {
+                modifiers: "none".into(),
+                key: "esc".into(),
+            }),
             toggle_focus: None,
-            scroll_up: Some(KeyBinding { modifiers: "none".into(), key: "pageup".into() }),
-            scroll_down: Some(KeyBinding { modifiers: "none".into(), key: "pagedown".into() }),
-            new_session: Some(KeyBinding { modifiers: "ctrl".into(), key: "n".into() }),
-            open_session_picker: Some(KeyBinding { modifiers: "ctrl".into(), key: "s".into() }),
-            open_model_picker: Some(KeyBinding { modifiers: "ctrl".into(), key: "p".into() }),
-            tab_complete: Some(KeyBinding { modifiers: "none".into(), key: "tab".into() }),
-            retry: Some(KeyBinding { modifiers: "ctrl".into(), key: "r".into() }),
+            scroll_up: Some(KeyBinding {
+                modifiers: "none".into(),
+                key: "pageup".into(),
+            }),
+            scroll_down: Some(KeyBinding {
+                modifiers: "none".into(),
+                key: "pagedown".into(),
+            }),
+            new_session: Some(KeyBinding {
+                modifiers: "ctrl".into(),
+                key: "n".into(),
+            }),
+            open_session_picker: Some(KeyBinding {
+                modifiers: "ctrl".into(),
+                key: "s".into(),
+            }),
+            open_model_picker: Some(KeyBinding {
+                modifiers: "ctrl".into(),
+                key: "p".into(),
+            }),
+            tab_complete: Some(KeyBinding {
+                modifiers: "none".into(),
+                key: "tab".into(),
+            }),
+            retry: Some(KeyBinding {
+                modifiers: "ctrl".into(),
+                key: "r".into(),
+            }),
         }
     }
 
@@ -169,10 +199,16 @@ impl KeyBindings {
     /// 生成 footer 显示的快捷键提示文本。
     pub fn footer_hints(&self, is_running: bool) -> Vec<(&'static str, String)> {
         if is_running {
-            let cancel_key = self.cancel.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "Esc".to_string());
-            let quit_key = self.quit.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+C".to_string());
+            let cancel_key = self
+                .cancel
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "Esc".to_string());
+            let quit_key = self
+                .quit
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "Ctrl+C".to_string());
             vec![
                 ("key", format!(" {}", cancel_key)),
                 ("label", " Cancel  ".to_string()),
@@ -180,20 +216,41 @@ impl KeyBindings {
                 ("label", " Quit".to_string()),
             ]
         } else {
-            let submit_key = self.submit.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+O".to_string());
-            let quit_key = self.quit.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+C".to_string());
-            let scroll_up_key = self.scroll_up.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "PgUp".to_string());
-            let scroll_dn_key = self.scroll_down.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "PgDn".to_string());
-            let session_key = self.open_session_picker.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+S".to_string());
-            let model_key = self.open_model_picker.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+P".to_string());
-            let retry_key = self.retry.as_ref()
-                .map(|kb| kb.display()).unwrap_or_else(|| "Ctrl+R".to_string());
+            let submit_key = self
+                .submit
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "Ctrl+O".to_string());
+            let quit_key = self
+                .quit
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "Ctrl+C".to_string());
+            let scroll_up_key = self
+                .scroll_up
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "PgUp".to_string());
+            let scroll_dn_key = self
+                .scroll_down
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "PgDn".to_string());
+            let session_key = self
+                .open_session_picker
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "Ctrl+S".to_string());
+            let model_key = self
+                .open_model_picker
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "Ctrl+P".to_string());
+            let retry_key = self
+                .retry
+                .as_ref()
+                .map(|kb| kb.display())
+                .unwrap_or_else(|| "Ctrl+R".to_string());
             vec![
                 ("key", format!(" {}", submit_key)),
                 ("label", " Send  ".to_string()),
@@ -219,7 +276,11 @@ impl KeyBinding {
         if mods == "none" {
             capitalize_first(&self.key)
         } else {
-            format!("{}+{}", capitalize_first(&mods), capitalize_first(&self.key))
+            format!(
+                "{}+{}",
+                capitalize_first(&mods),
+                capitalize_first(&self.key)
+            )
         }
     }
 }
@@ -332,8 +393,12 @@ mod tests {
     fn footer_hints_format() {
         let kb = KeyBindings::defaults();
         let idle_hints = kb.footer_hints(false);
-        assert!(idle_hints.iter().any(|(t, s)| *t == "key" && s.contains("Ctrl+O")));
+        assert!(idle_hints
+            .iter()
+            .any(|(t, s)| *t == "key" && s.contains("Ctrl+O")));
         let running_hints = kb.footer_hints(true);
-        assert!(running_hints.iter().any(|(t, s)| *t == "key" && s.contains("Esc")));
+        assert!(running_hints
+            .iter()
+            .any(|(t, s)| *t == "key" && s.contains("Esc")));
     }
 }

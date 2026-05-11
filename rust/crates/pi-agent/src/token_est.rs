@@ -20,7 +20,10 @@ pub struct TokenEstimate {
 pub fn estimate(text: &str) -> TokenEstimate {
     let chars = text.chars().count();
     if chars == 0 {
-        return TokenEstimate { tokens: 0, chars: 0 };
+        return TokenEstimate {
+            tokens: 0,
+            chars: 0,
+        };
     }
 
     // 计算各类字符比例
@@ -124,12 +127,10 @@ mod tests {
 
     #[test]
     fn estimate_messages_with_text() {
-        let msgs = vec![
-            serde_json::json!({
-                "role": "user",
-                "content": [{"type": "text", "text": "Hello"}]
-            }),
-        ];
+        let msgs = vec![serde_json::json!({
+            "role": "user",
+            "content": [{"type": "text", "text": "Hello"}]
+        })];
         let tokens = estimate_messages(&msgs);
         assert!(tokens > 0);
     }

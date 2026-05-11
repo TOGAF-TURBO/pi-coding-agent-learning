@@ -18,20 +18,28 @@ pub struct OpenAiResponsesDriver {
 
 impl OpenAiResponsesDriver {
     pub fn new() -> Self {
-        Self { client: Client::new() }
+        Self {
+            client: Client::new(),
+        }
     }
 }
 
 impl Default for OpenAiResponsesDriver {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl LlmDriver for OpenAiResponsesDriver {
-    fn name(&self) -> &str { "openai-responses" }
+    fn name(&self) -> &str {
+        "openai-responses"
+    }
 
     fn stream(&self, request: CompletionRequest) -> Result<StreamResult, anyhow::Error> {
-        let url = request.base_url.as_ref()
+        let url = request
+            .base_url
+            .as_ref()
             .map(|b| format!("{}/responses", b.trim_end_matches('/')))
             .unwrap_or_else(|| "https://api.openai.com/v1/responses".to_string());
 
@@ -40,7 +48,9 @@ impl LlmDriver for OpenAiResponsesDriver {
         for msg in &request.messages {
             match msg {
                 pi_types::message::Message::User(u) => {
-                    let texts: Vec<_> = u.content.iter()
+                    let texts: Vec<_> = u
+                        .content
+                        .iter()
                         .filter_map(|b| match b {
                             pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
                             _ => None,
@@ -49,7 +59,9 @@ impl LlmDriver for OpenAiResponsesDriver {
                     input.push(json!({ "role": "user", "content": texts.join("\n") }));
                 }
                 pi_types::message::Message::Assistant(a) => {
-                    let texts: Vec<_> = a.content.iter()
+                    let texts: Vec<_> = a
+                        .content
+                        .iter()
                         .filter_map(|b| match b {
                             pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
                             _ => None,
@@ -74,22 +86,27 @@ impl LlmDriver for OpenAiResponsesDriver {
         }
 
         if !request.tools.is_empty() {
-            let tools: Vec<_> = request.tools.iter().map(|t| {
-                json!({
-                    "type": "function",
-                    "function": {
-                        "name": t.name,
-                        "description": t.description,
-                        "parameters": t.parameters,
-                    }
+            let tools: Vec<_> = request
+                .tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "type": "function",
+                        "function": {
+                            "name": t.name,
+                            "description": t.description,
+                            "parameters": t.parameters,
+                        }
+                    })
                 })
-            }).collect();
+                .collect();
             body["tools"] = json!(tools);
         }
 
         let api_key = request.api_key.clone();
 
-        let response_future = self.client
+        let response_future = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {api_key}"))
             .header("content-type", "application/json")

@@ -36,11 +36,11 @@ pub fn calculate(area: Rect, editor_height: u16) -> LayoutRegions {
     let outer = Layout::default()
         .direction(Direction::Vertical)
         .constraints([
-            Constraint::Length(1),           // header
-            Constraint::Min(3),              // chat (flex)
-            Constraint::Length(1),           // status
-            Constraint::Length(editor_h),    // editor
-            Constraint::Length(1),           // footer
+            Constraint::Length(1),        // header
+            Constraint::Min(3),           // chat (flex)
+            Constraint::Length(1),        // status
+            Constraint::Length(editor_h), // editor
+            Constraint::Length(1),        // footer
         ])
         .split(area);
 

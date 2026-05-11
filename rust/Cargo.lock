@@ -1262,6 +1262,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
 
 [[package]]
+name = "pathdiff"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
+
+[[package]]
 name = "percent-encoding"
 version = "2.3.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1275,6 +1281,7 @@ dependencies = [
  "async-trait",
  "chrono",
  "futures",
+ "pi-extensions",
  "pi-llm",
  "pi-session",
  "pi-tools",
@@ -1303,6 +1310,7 @@ dependencies = [
  "pi-tools",
  "pi-tui",
  "pi-types",
+ "reqwest",
  "serde",
  "serde_json",
  "tempfile",
@@ -1316,6 +1324,7 @@ dependencies = [
 name = "pi-extensions"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "async-trait",
  "dashmap",
  "pi-types",
@@ -1366,8 +1375,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "chrono",
  "globwalk",
  "parking_lot",
+ "pathdiff",
  "pi-types",
  "regex",
  "serde",
@@ -1384,8 +1395,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "crossterm",
+ "dirs",
  "parking_lot",
  "pi-agent",
+ "pi-extensions",
  "pi-llm",
  "pi-session",
  "pi-tools",
@@ -1393,6 +1406,7 @@ dependencies = [
  "ratatui",
  "serde",
  "serde_json",
+ "tempfile",
  "thiserror",
  "tokio",
  "tracing",

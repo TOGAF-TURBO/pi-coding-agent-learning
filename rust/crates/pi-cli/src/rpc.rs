@@ -14,8 +14,8 @@
 //! compact, bash, get_commands.
 
 use std::path::PathBuf;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
@@ -165,7 +165,11 @@ pub enum RpcEvent {
     ToolCallStart { name: String },
     /// 工具结果。
     #[serde(rename = "tool_result")]
-    ToolResult { name: String, output: String, is_error: bool },
+    ToolResult {
+        name: String,
+        output: String,
+        is_error: bool,
+    },
     /// Agent 状态变化。
     #[serde(rename = "state_change")]
     StateChange { state: String },
@@ -188,10 +192,7 @@ pub enum RpcEvent {
     },
     /// 错误。
     #[serde(rename = "error")]
-    Error {
-        id: Option<String>,
-        message: String,
-    },
+    Error { id: Option<String>, message: String },
     /// 可用模型列表。
     #[serde(rename = "available_models")]
     AvailableModels {
@@ -200,10 +201,7 @@ pub enum RpcEvent {
     },
     /// 当前模型。
     #[serde(rename = "current_model")]
-    CurrentModel {
-        id: Option<String>,
-        model: String,
-    },
+    CurrentModel { id: Option<String>, model: String },
     /// Bash 输出。
     #[serde(rename = "bash_output")]
     BashOutput {
@@ -226,32 +224,19 @@ pub enum RpcEvent {
     },
     /// 排队消息确认。
     #[serde(rename = "follow_up_queued")]
-    FollowUpQueued {
-        id: Option<String>,
-    },
+    FollowUpQueued { id: Option<String> },
     /// 引导已注入。
     #[serde(rename = "steered")]
-    Steered {
-        id: Option<String>,
-    },
+    Steered { id: Option<String> },
     /// Thinking level 已设置。
     #[serde(rename = "thinking_level_set")]
-    ThinkingLevelSet {
-        id: Option<String>,
-        level: String,
-    },
+    ThinkingLevelSet { id: Option<String>, level: String },
     /// 自动压缩已设置。
     #[serde(rename = "auto_compaction_set")]
-    AutoCompactionSet {
-        id: Option<String>,
-        enabled: bool,
-    },
+    AutoCompactionSet { id: Option<String>, enabled: bool },
     /// 自动重试已设置。
     #[serde(rename = "auto_retry_set")]
-    AutoRetrySet {
-        id: Option<String>,
-        enabled: bool,
-    },
+    AutoRetrySet { id: Option<String>, enabled: bool },
 }
 
 /// 模型信息。
@@ -349,13 +334,12 @@ pub async fn run_rpc(
                                 message: format!("Invalid command: {e}"),
                             };
                             let _stdout = tokio::io::stdout();
-                            let _ = serde_json::to_string(&err)
-                                .map(|s| {
-                                    let _ = std::io::Write::write_all(
-                                        &mut std::io::stdout(),
-                                        format!("{}\n", s).as_bytes(),
-                                    );
-                                });
+                            let _ = serde_json::to_string(&err).map(|s| {
+                                let _ = std::io::Write::write_all(
+                                    &mut std::io::stdout(),
+                                    format!("{}\n", s).as_bytes(),
+                                );
+                            });
                         }
                     }
                 }
@@ -376,19 +360,28 @@ pub async fn run_rpc(
                 match rpc_cmd {
                     RpcCommand::Prompt { id, message } => {
                         if agent_running {
-                            emit(&mut stdout_writer, &RpcEvent::Error {
-                                id,
-                                message: "Agent is already running, abort first".to_string(),
-                            }).await?;
+                            emit(
+                                &mut stdout_writer,
+                                &RpcEvent::Error {
+                                    id,
+                                    message: "Agent is already running, abort first".to_string(),
+                                },
+                            )
+                            .await?;
                             continue;
                         }
                         // 解析 @file 引用
-                        let resolved_message = pi_tools::fileref::resolve_file_refs(&message, &cwd).0;
+                        let resolved_message =
+                            pi_tools::fileref::resolve_file_refs(&message, &cwd).0;
                         agent_running = true;
                         abort_flag.store(false, Ordering::SeqCst);
-                        emit(&mut stdout_writer, &RpcEvent::StateChange {
-                            state: "running".to_string(),
-                        }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::StateChange {
+                                state: "running".to_string(),
+                            },
+                        )
+                        .await?;
 
                         let driver = make_driver(&api_type);
 
@@ -396,8 +389,10 @@ pub async fn run_rpc(
                         let sink = make_sync_sink();
 
                         // 准备 agent turn（用 dummy session swap）
-                        let dummy_path = std::env::temp_dir().join(format!("piso-rpc-dummy-{}", std::process::id()));
-                        let dummy_session = JsonlSession::create(&dummy_path, &cwd_str).await
+                        let dummy_path = std::env::temp_dir()
+                            .join(format!("piso-rpc-dummy-{}", std::process::id()));
+                        let dummy_session = JsonlSession::create(&dummy_path, &cwd_str)
+                            .await
                             .unwrap_or_else(|_| panic!("Failed to create dummy session"));
 
                         let mut agent = AgentLoop::new(
@@ -418,10 +413,14 @@ pub async fn run_rpc(
                         match agent.run(&resolved_message).await {
                             Ok(_) => {}
                             Err(e) => {
-                                emit(&mut stdout_writer, &RpcEvent::Error {
-                                    id: id.clone(),
-                                    message: format!("{e}"),
-                                }).await?;
+                                emit(
+                                    &mut stdout_writer,
+                                    &RpcEvent::Error {
+                                        id: id.clone(),
+                                        message: format!("{e}"),
+                                    },
+                                )
+                                .await?;
                             }
                         }
 
@@ -429,21 +428,30 @@ pub async fn run_rpc(
                         session = agent.into_session();
                         agent_running = false;
 
-                        emit(&mut stdout_writer, &RpcEvent::StateChange {
-                            state: "idle".to_string(),
-                        }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::StateChange {
+                                state: "idle".to_string(),
+                            },
+                        )
+                        .await?;
                         emit(&mut stdout_writer, &RpcEvent::Done { id }).await?;
 
                         // 处理排队的 follow_up / steer 消息
                         while let Some(next_msg) = follow_up_queue.pop() {
                             agent_running = true;
-                            emit(&mut stdout_writer, &RpcEvent::StateChange {
-                                state: "running".to_string(),
-                            }).await?;
+                            emit(
+                                &mut stdout_writer,
+                                &RpcEvent::StateChange {
+                                    state: "running".to_string(),
+                                },
+                            )
+                            .await?;
 
                             let driver = make_driver(&api_type);
                             let sink2 = make_sync_sink();
-                            let dummy_path = std::env::temp_dir().join(format!("piso-rpc-dummy-{}", std::process::id()));
+                            let dummy_path = std::env::temp_dir()
+                                .join(format!("piso-rpc-dummy-{}", std::process::id()));
                             let dummy_session = JsonlSession::create(&dummy_path, &cwd_str).await?;
                             let mut agent = AgentLoop::new(
                                 std::mem::replace(&mut session, dummy_session),
@@ -462,9 +470,13 @@ pub async fn run_rpc(
                             session = agent.into_session();
                             agent_running = false;
 
-                            emit(&mut stdout_writer, &RpcEvent::StateChange {
-                                state: "idle".to_string(),
-                            }).await?;
+                            emit(
+                                &mut stdout_writer,
+                                &RpcEvent::StateChange {
+                                    state: "idle".to_string(),
+                                },
+                            )
+                            .await?;
                             emit(&mut stdout_writer, &RpcEvent::Done { id: None }).await?;
                         }
                     }
@@ -472,30 +484,48 @@ pub async fn run_rpc(
                     RpcCommand::Abort { id } => {
                         abort_flag.store(true, Ordering::SeqCst);
                         agent_running = false;
-                        emit(&mut stdout_writer, &RpcEvent::StateChange {
-                            state: "idle".to_string(),
-                        }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::StateChange {
+                                state: "idle".to_string(),
+                            },
+                        )
+                        .await?;
                         emit(&mut stdout_writer, &RpcEvent::Done { id }).await?;
                     }
 
                     RpcCommand::GetState { id } => {
-                        emit(&mut stdout_writer, &RpcEvent::State {
-                            id,
-                            state: if agent_running { "running".to_string() } else { "idle".to_string() },
-                            message_count: session.len(),
-                            session_id: session.id().to_string(),
-                        }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::State {
+                                id,
+                                state: if agent_running {
+                                    "running".to_string()
+                                } else {
+                                    "idle".to_string()
+                                },
+                                message_count: session.len(),
+                                session_id: session.id().to_string(),
+                            },
+                        )
+                        .await?;
                     }
 
                     RpcCommand::GetMessages { id } => {
-                        let messages: Vec<RpcMessage> = session.entries().iter()
+                        let messages: Vec<RpcMessage> = session
+                            .entries()
+                            .iter()
                             .filter_map(|e| {
                                 if let pi_types::session::SessionEntry::Message(msg) = e {
-                                    let text = msg.content.as_array()
+                                    let text = msg
+                                        .content
+                                        .as_array()
                                         .map(|arr| {
                                             arr.iter()
                                                 .filter_map(|b| {
-                                                    if b.get("type").and_then(|v| v.as_str()) == Some("text") {
+                                                    if b.get("type").and_then(|v| v.as_str())
+                                                        == Some("text")
+                                                    {
                                                         b.get("text").and_then(|v| v.as_str())
                                                     } else {
                                                         None
@@ -506,7 +536,10 @@ pub async fn run_rpc(
                                         })
                                         .unwrap_or_default();
                                     if !text.is_empty() {
-                                        Some(RpcMessage { role: msg.role.clone(), content: text })
+                                        Some(RpcMessage {
+                                            role: msg.role.clone(),
+                                            content: text,
+                                        })
                                     } else {
                                         None
                                     }
@@ -521,48 +554,78 @@ pub async fn run_rpc(
                     RpcCommand::NewSession { id } => {
                         let new_session = mgr.create(&cwd_str).await?;
                         session = new_session;
-                        emit(&mut stdout_writer, &RpcEvent::State {
-                            id,
-                            state: "idle".to_string(),
-                            message_count: 0,
-                            session_id: session.id().to_string(),
-                        }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::State {
+                                id,
+                                state: "idle".to_string(),
+                                message_count: 0,
+                                session_id: session.id().to_string(),
+                            },
+                        )
+                        .await?;
                     }
 
-                    RpcCommand::SetModel { id, model: new_model } => {
+                    RpcCommand::SetModel {
+                        id,
+                        model: new_model,
+                    } => {
                         current_model = new_model.clone();
-                        emit(&mut stdout_writer, &RpcEvent::CurrentModel {
-                            id,
-                            model: new_model,
-                        }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::CurrentModel {
+                                id,
+                                model: new_model,
+                            },
+                        )
+                        .await?;
                     }
 
                     RpcCommand::CycleModel { id } => {
-                        if let Some(idx) = available_models.iter().position(|(_, mid, _)| *mid == current_model) {
+                        if let Some(idx) = available_models
+                            .iter()
+                            .position(|(_, mid, _)| *mid == current_model)
+                        {
                             let next_idx = (idx + 1) % available_models.len();
                             let (_, mid, name) = &available_models[next_idx];
                             current_model = mid.clone();
-                            emit(&mut stdout_writer, &RpcEvent::CurrentModel {
-                                id,
-                                model: format!("{mid} ({name})"),
-                            }).await?;
+                            emit(
+                                &mut stdout_writer,
+                                &RpcEvent::CurrentModel {
+                                    id,
+                                    model: format!("{mid} ({name})"),
+                                },
+                            )
+                            .await?;
                         } else {
-                            emit(&mut stdout_writer, &RpcEvent::Error {
-                                id,
-                                message: format!("Current model '{}' not in available list", current_model),
-                            }).await?;
+                            emit(
+                                &mut stdout_writer,
+                                &RpcEvent::Error {
+                                    id,
+                                    message: format!(
+                                        "Current model '{}' not in available list",
+                                        current_model
+                                    ),
+                                },
+                            )
+                            .await?;
                         }
                     }
 
                     RpcCommand::GetAvailableModels { id } => {
-                        let models: Vec<ModelInfo> = available_models.iter()
+                        let models: Vec<ModelInfo> = available_models
+                            .iter()
                             .map(|(prov, mid, name)| ModelInfo {
                                 provider: prov.clone(),
                                 id: mid.clone(),
                                 name: name.clone(),
                             })
                             .collect();
-                        emit(&mut stdout_writer, &RpcEvent::AvailableModels { id, models }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::AvailableModels { id, models },
+                        )
+                        .await?;
                     }
 
                     RpcCommand::Steer { id, message } => {
@@ -581,17 +644,25 @@ pub async fn run_rpc(
                         if total > 12 {
                             let removed = total - 12;
                             session.compact_keep_last(12).await?;
-                            emit(&mut stdout_writer, &RpcEvent::CompactResult {
-                                id,
-                                removed,
-                                remaining: 12,
-                            }).await?;
+                            emit(
+                                &mut stdout_writer,
+                                &RpcEvent::CompactResult {
+                                    id,
+                                    removed,
+                                    remaining: 12,
+                                },
+                            )
+                            .await?;
                         } else {
-                            emit(&mut stdout_writer, &RpcEvent::CompactResult {
-                                id,
-                                removed: 0,
-                                remaining: total,
-                            }).await?;
+                            emit(
+                                &mut stdout_writer,
+                                &RpcEvent::CompactResult {
+                                    id,
+                                    removed: 0,
+                                    remaining: total,
+                                },
+                            )
+                            .await?;
                         }
                     }
 
@@ -610,41 +681,68 @@ pub async fn run_rpc(
                                 } else {
                                     format!("{stdout_str}\n{stderr_str}")
                                 };
-                                emit(&mut stdout_writer, &RpcEvent::BashOutput {
-                                    id,
-                                    output: combined,
-                                    exit_code: out.status.code().unwrap_or(-1),
-                                }).await?;
+                                emit(
+                                    &mut stdout_writer,
+                                    &RpcEvent::BashOutput {
+                                        id,
+                                        output: combined,
+                                        exit_code: out.status.code().unwrap_or(-1),
+                                    },
+                                )
+                                .await?;
                             }
                             Err(e) => {
-                                emit(&mut stdout_writer, &RpcEvent::Error {
-                                    id,
-                                    message: format!("Failed to execute: {e}"),
-                                }).await?;
+                                emit(
+                                    &mut stdout_writer,
+                                    &RpcEvent::Error {
+                                        id,
+                                        message: format!("Failed to execute: {e}"),
+                                    },
+                                )
+                                .await?;
                             }
                         }
                     }
 
                     RpcCommand::GetCommands { id } => {
                         let commands = vec![
-                            "/help".to_string(), "/clear".to_string(), "/compact".to_string(),
-                            "/cost".to_string(), "/usage".to_string(), "/sessions".to_string(),
-                            "/find".to_string(), "/grep".to_string(), "/new".to_string(),
-                            "/reload".to_string(), "/copy".to_string(), "/fork".to_string(),
-                            "/session".to_string(), "/name".to_string(), "/export".to_string(),
-                            "/import".to_string(), "/clone".to_string(),
+                            "/help".to_string(),
+                            "/clear".to_string(),
+                            "/compact".to_string(),
+                            "/cost".to_string(),
+                            "/usage".to_string(),
+                            "/sessions".to_string(),
+                            "/find".to_string(),
+                            "/grep".to_string(),
+                            "/new".to_string(),
+                            "/reload".to_string(),
+                            "/copy".to_string(),
+                            "/fork".to_string(),
+                            "/session".to_string(),
+                            "/name".to_string(),
+                            "/export".to_string(),
+                            "/import".to_string(),
+                            "/clone".to_string(),
                         ];
                         emit(&mut stdout_writer, &RpcEvent::Commands { id, commands }).await?;
                     }
 
                     RpcCommand::SetThinkingLevel { id, level } => {
                         thinking_level = Some(level.clone());
-                        emit(&mut stdout_writer, &RpcEvent::ThinkingLevelSet { id, level }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::ThinkingLevelSet { id, level },
+                        )
+                        .await?;
                     }
 
                     RpcCommand::SetAutoCompaction { id, enabled } => {
                         auto_compaction = enabled;
-                        emit(&mut stdout_writer, &RpcEvent::AutoCompactionSet { id, enabled }).await?;
+                        emit(
+                            &mut stdout_writer,
+                            &RpcEvent::AutoCompactionSet { id, enabled },
+                        )
+                        .await?;
                     }
 
                     RpcCommand::SetAutoRetry { id, enabled } => {
@@ -675,24 +773,12 @@ async fn emit<W: AsyncWriteExt + Unpin>(writer: &mut W, event: &RpcEvent) -> Res
 /// 创建 LLM driver。
 fn make_driver(api_type: &str) -> Box<dyn LlmDriver> {
     match api_type {
-        "openai-completions" => {
-            Box::new(pi_llm::openai::OpenAiDriver::new())
-        }
-        "openai-responses" => {
-            Box::new(pi_llm::openai_responses::OpenAiResponsesDriver::new())
-        }
-        "azure-openai" => {
-            Box::new(pi_llm::azure::AzureOpenAiDriver::new())
-        }
-        "amazon-bedrock" | "bedrock" => {
-            Box::new(pi_llm::bedrock::BedrockDriver::new())
-        }
-        "google-vertex" | "vertex" => {
-            Box::new(pi_llm::vertex::VertexDriver::new())
-        }
-        "google-gemini" | "gemini" => {
-            Box::new(pi_llm::gemini::GeminiDriver::new())
-        }
+        "openai-completions" => Box::new(pi_llm::openai::OpenAiDriver::new()),
+        "openai-responses" => Box::new(pi_llm::openai_responses::OpenAiResponsesDriver::new()),
+        "azure-openai" => Box::new(pi_llm::azure::AzureOpenAiDriver::new()),
+        "amazon-bedrock" | "bedrock" => Box::new(pi_llm::bedrock::BedrockDriver::new()),
+        "google-vertex" | "vertex" => Box::new(pi_llm::vertex::VertexDriver::new()),
+        "google-gemini" | "gemini" => Box::new(pi_llm::gemini::GeminiDriver::new()),
         _ => Box::new(pi_llm::providers::AnthropicDriver::new()),
     }
 }
@@ -717,9 +803,16 @@ fn make_sync_sink() -> Arc<StreamSink> {
             StreamEvent::TextDelta { text } => Some(RpcEvent::TextDelta { text }),
             StreamEvent::ThinkingDelta { thinking } => Some(RpcEvent::ThinkingDelta { thinking }),
             StreamEvent::ToolCallStart { name, .. } => Some(RpcEvent::ToolCallStart { name }),
-            StreamEvent::ToolResult { name, output, is_error, .. } => {
-                Some(RpcEvent::ToolResult { name, output, is_error })
-            }
+            StreamEvent::ToolResult {
+                name,
+                output,
+                is_error,
+                ..
+            } => Some(RpcEvent::ToolResult {
+                name,
+                output,
+                is_error,
+            }),
             _ => None,
         };
         if let Some(ev) = rpc_event {
@@ -786,7 +879,9 @@ mod tests {
 
     #[test]
     fn serialize_text_delta_event() {
-        let event = RpcEvent::TextDelta { text: "hello".to_string() };
+        let event = RpcEvent::TextDelta {
+            text: "hello".to_string(),
+        };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("text_delta"));
         assert!(json.contains("hello"));
@@ -838,26 +933,38 @@ mod tests {
     fn deserialize_set_auto_compaction() {
         let json = r#"{"type":"set_auto_compaction","enabled":true}"#;
         let cmd: RpcCommand = serde_json::from_str(json).unwrap();
-        assert!(matches!(cmd, RpcCommand::SetAutoCompaction { enabled: true, .. }));
+        assert!(matches!(
+            cmd,
+            RpcCommand::SetAutoCompaction { enabled: true, .. }
+        ));
     }
 
     #[test]
     fn deserialize_set_auto_retry() {
         let json = r#"{"type":"set_auto_retry","enabled":false}"#;
         let cmd: RpcCommand = serde_json::from_str(json).unwrap();
-        assert!(matches!(cmd, RpcCommand::SetAutoRetry { enabled: false, .. }));
+        assert!(matches!(
+            cmd,
+            RpcCommand::SetAutoRetry { enabled: false, .. }
+        ));
     }
 
     #[test]
     fn serialize_thinking_level_set() {
-        let event = RpcEvent::ThinkingLevelSet { id: None, level: "medium".to_string() };
+        let event = RpcEvent::ThinkingLevelSet {
+            id: None,
+            level: "medium".to_string(),
+        };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("thinking_level_set"));
     }
 
     #[test]
     fn serialize_auto_compaction_set() {
-        let event = RpcEvent::AutoCompactionSet { id: None, enabled: true };
+        let event = RpcEvent::AutoCompactionSet {
+            id: None,
+            enabled: true,
+        };
         let json = serde_json::to_string(&event).unwrap();
         assert!(json.contains("auto_compaction_set"));
     }

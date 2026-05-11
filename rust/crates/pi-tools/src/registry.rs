@@ -34,11 +34,7 @@ impl ToolRegistry {
 
     /// 获取所有工具定义（用于发送给 LLM）。
     pub fn definitions(&self) -> Vec<ToolDefinition> {
-        self.tools
-            .read()
-            .values()
-            .map(|t| t.definition())
-            .collect()
+        self.tools.read().values().map(|t| t.definition()).collect()
     }
 
     /// 列出所有已注册工具名称。
@@ -74,9 +70,9 @@ impl Default for ToolRegistry {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use serde_json::Value;
-    use pi_types::tool::{ToolResult, ToolExecutor};
     use pi_types::error::PiError;
+    use pi_types::tool::{ToolExecutor, ToolResult};
+    use serde_json::Value;
 
     struct DummyTool;
 

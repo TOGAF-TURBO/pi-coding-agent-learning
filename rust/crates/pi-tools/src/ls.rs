@@ -116,18 +116,25 @@ impl ToolExecutor for LsTool {
                         });
                         continue;
                     }
-                }
+                },
             };
 
-            let modified = metadata.modified().map(|t| {
-                let datetime: chrono::DateTime<chrono::Local> = t.into();
-                datetime.format("%Y-%m-%d %H:%M").to_string()
-            }).unwrap_or_else(|_| "-".to_string());
+            let modified = metadata
+                .modified()
+                .map(|t| {
+                    let datetime: chrono::DateTime<chrono::Local> = t.into();
+                    datetime.format("%Y-%m-%d %H:%M").to_string()
+                })
+                .unwrap_or_else(|_| "-".to_string());
 
             entries.push(EntryInfo {
                 name,
                 is_dir: metadata.is_dir(),
-                size: if metadata.is_file() { metadata.len() } else { 0 },
+                size: if metadata.is_file() {
+                    metadata.len()
+                } else {
+                    0
+                },
                 modified,
             });
         }
@@ -135,20 +142,26 @@ impl ToolExecutor for LsTool {
         // 排序
         match sort_by {
             "size" => entries.sort_by(|a, b| b.size.cmp(&a.size).then(a.name.cmp(&b.name))),
-            "modified" => entries.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.name.cmp(&b.name))),
+            "modified" => {
+                entries.sort_by(|a, b| b.modified.cmp(&a.modified).then(a.name.cmp(&b.name)))
+            }
             _ => entries.sort_by(|a, b| a.name.cmp(&b.name)),
         }
 
         // 格式化输出
         let mut lines = Vec::new();
-        lines.push(format!("{} ({} entries)", dir_path.display(), entries.len()));
+        lines.push(format!(
+            "{} ({} entries)",
+            dir_path.display(),
+            entries.len()
+        ));
         lines.push(String::new());
 
         let max_name_len = entries.iter().map(|e| e.name.len()).max().unwrap_or(20);
         let name_col = max_name_len.max(20) + 1;
 
         for entry in &entries {
-        let type_marker = if entry.is_dir { "/" } else { " " };
+            let type_marker = if entry.is_dir { "/" } else { " " };
             let size_str = if entry.size > 0 {
                 format_human_size(entry.size)
             } else {
@@ -189,8 +202,8 @@ fn format_human_size(bytes: u64) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn list_directory() {
@@ -200,14 +213,29 @@ mod tests {
         fs::write(dir.path().join("big.dat"), "x".repeat(2048)).unwrap();
 
         let tool = LsTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": dir.path().to_string_lossy()
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": dir.path().to_string_lossy()
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error, "Error: {}", result.output);
-        assert!(result.output.contains("hello.txt"), "Output: {}", result.output);
-        assert!(result.output.contains("subdir"), "Output: {}", result.output);
-        assert!(result.output.contains("2.0K") || result.output.contains("2K"), "Output: {}", result.output);
+        assert!(
+            result.output.contains("hello.txt"),
+            "Output: {}",
+            result.output
+        );
+        assert!(
+            result.output.contains("subdir"),
+            "Output: {}",
+            result.output
+        );
+        assert!(
+            result.output.contains("2.0K") || result.output.contains("2K"),
+            "Output: {}",
+            result.output
+        );
         assert!(result.output.contains("3 entries"));
     }
 
@@ -220,17 +248,23 @@ mod tests {
         let tool = LsTool::new();
 
         // 默认不显示隐藏文件
-        let result = tool.execute(serde_json::json!({
-            "path": dir.path().to_string_lossy()
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": dir.path().to_string_lossy()
+            }))
+            .await
+            .unwrap();
         assert!(!result.output.contains(".hidden"));
         assert!(result.output.contains("visible.txt"));
 
         // 显示隐藏文件
-        let result = tool.execute(serde_json::json!({
-            "path": dir.path().to_string_lossy(),
-            "all": true
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": dir.path().to_string_lossy(),
+                "all": true
+            }))
+            .await
+            .unwrap();
         assert!(result.output.contains(".hidden"));
     }
 
@@ -241,10 +275,13 @@ mod tests {
         fs::write(dir.path().join("big.txt"), "a".repeat(1000)).unwrap();
 
         let tool = LsTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": dir.path().to_string_lossy(),
-            "sort_by": "size"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": dir.path().to_string_lossy(),
+                "sort_by": "size"
+            }))
+            .await
+            .unwrap();
 
         // big.txt 应排在前面
         let big_pos = result.output.find("big.txt").unwrap();
@@ -255,9 +292,12 @@ mod tests {
     #[tokio::test]
     async fn nonexistent_directory() {
         let tool = LsTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": "/nonexistent/path/xyz"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": "/nonexistent/path/xyz"
+            }))
+            .await
+            .unwrap();
         assert!(result.is_error);
         assert!(result.output.contains("not found"));
     }

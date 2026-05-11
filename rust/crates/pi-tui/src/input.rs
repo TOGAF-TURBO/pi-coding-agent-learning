@@ -132,13 +132,12 @@ impl InputEditor {
         let text = self.text.clone();
 
         // 记录到历史（非空且与上一条不同）
-        if !text.is_empty()
-            && self.history.last().map(|s| s.as_str()) != Some(&text) {
-                self.history.push(text.clone());
-                if self.history.len() > MAX_HISTORY {
-                    self.history.remove(0);
-                }
+        if !text.is_empty() && self.history.last().map(|s| s.as_str()) != Some(&text) {
+            self.history.push(text.clone());
+            if self.history.len() > MAX_HISTORY {
+                self.history.remove(0);
             }
+        }
 
         self.text.clear();
         self.cursor = 0;
@@ -291,7 +290,9 @@ mod tests {
         ed.take();
 
         // 当前输入 "hello"，按上
-        for c in "hello".chars() { ed.insert(c); }
+        for c in "hello".chars() {
+            ed.insert(c);
+        }
         ed.history_up();
         assert_eq!(ed.text(), "x");
 

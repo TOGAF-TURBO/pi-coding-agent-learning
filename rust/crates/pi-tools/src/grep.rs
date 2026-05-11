@@ -55,20 +55,14 @@ impl ToolExecutor for GrepTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult, PiError> {
-        let pattern = input["pattern"]
-            .as_str()
-            .ok_or_else(|| PiError::Tool {
-                tool: "grep".to_string(),
-                message: "missing 'pattern' parameter".to_string(),
-            })?;
+        let pattern = input["pattern"].as_str().ok_or_else(|| PiError::Tool {
+            tool: "grep".to_string(),
+            message: "missing 'pattern' parameter".to_string(),
+        })?;
 
-        let base_path = input["path"]
-            .as_str()
-            .unwrap_or(&self.cwd);
+        let base_path = input["path"].as_str().unwrap_or(&self.cwd);
 
-        let include = input["include"]
-            .as_str()
-            .unwrap_or("**/*");
+        let include = input["include"].as_str().unwrap_or("**/*");
 
         let case_insensitive = input["case_insensitive"].as_bool().unwrap_or(false);
 
@@ -77,7 +71,8 @@ impl ToolExecutor for GrepTool {
             Regex::new(&format!("(?i){}", pattern))
         } else {
             Regex::new(pattern)
-        }.map_err(|e| PiError::Tool {
+        }
+        .map_err(|e| PiError::Tool {
             tool: "grep".to_string(),
             message: format!("invalid regex '{}': {e}", pattern),
         })?;
@@ -157,11 +152,10 @@ fn grep_file(
     results: &mut Vec<String>,
     match_count: &mut usize,
 ) -> Result<(), PiError> {
-    let content = std::fs::read_to_string(path)
-        .map_err(|e| PiError::Tool {
-            tool: "grep".to_string(),
-            message: format!("failed to read '{}': {e}", display_path),
-        })?;
+    let content = std::fs::read_to_string(path).map_err(|e| PiError::Tool {
+        tool: "grep".to_string(),
+        message: format!("failed to read '{}': {e}", display_path),
+    })?;
 
     for (i, line) in content.lines().enumerate() {
         if re.is_match(line) {
@@ -179,18 +173,25 @@ fn grep_file(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn grep_finds_match() {
         let dir = TempDir::new().unwrap();
-        fs::write(dir.path().join("test.txt"), "hello world\nfoo bar\nhello rust").unwrap();
+        fs::write(
+            dir.path().join("test.txt"),
+            "hello world\nfoo bar\nhello rust",
+        )
+        .unwrap();
 
         let tool = GrepTool::new(dir.path().to_string_lossy());
-        let result = tool.execute(serde_json::json!({
-            "pattern": "hello"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "pattern": "hello"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error);
         assert!(result.output.contains("hello"));
@@ -202,12 +203,19 @@ mod tests {
         fs::write(dir.path().join("test.txt"), "no match here").unwrap();
 
         let tool = GrepTool::new(dir.path().to_string_lossy());
-        let result = tool.execute(serde_json::json!({
-            "pattern": "NONEXISTENT_PATTERN_XYZ"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "pattern": "NONEXISTENT_PATTERN_XYZ"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error);
-        assert!(result.output.contains("0 matches") || result.output.is_empty() || result.output.contains("0"));
+        assert!(
+            result.output.contains("0 matches")
+                || result.output.is_empty()
+                || result.output.contains("0")
+        );
     }
 
     #[test]

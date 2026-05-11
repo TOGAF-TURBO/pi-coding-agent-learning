@@ -6,7 +6,7 @@
 
 use anyhow::Result;
 
-use pi_types::session::{SessionEntry, MessageEntry};
+use pi_types::session::{MessageEntry, SessionEntry};
 
 /// 压缩阈值：超过此消息数触发压缩。
 const COMPACTION_THRESHOLD: usize = 40;
@@ -24,7 +24,8 @@ pub struct CompactionResult {
 
 /// 检查是否需要压缩。
 pub fn should_compact(entries: &[SessionEntry]) -> bool {
-    let msg_count = entries.iter()
+    let msg_count = entries
+        .iter()
         .filter(|e| matches!(e, SessionEntry::Message(_)))
         .count();
     msg_count > COMPACTION_THRESHOLD
@@ -39,7 +40,8 @@ pub fn create_summary(
     summary_text: &str,
     keep_recent: usize,
 ) -> Result<(MessageEntry, CompactionResult)> {
-    let messages: Vec<&SessionEntry> = entries.iter()
+    let messages: Vec<&SessionEntry> = entries
+        .iter()
         .filter(|e| matches!(e, SessionEntry::Message(_)))
         .collect();
 
@@ -48,7 +50,8 @@ pub fn create_summary(
     if original_count <= keep_recent {
         return Err(anyhow::anyhow!(
             "Not enough messages to compact ({} <= {})",
-            original_count, keep_recent
+            original_count,
+            keep_recent
         ));
     }
 
@@ -69,11 +72,14 @@ pub fn create_summary(
         usage: None,
     };
 
-    Ok((summary_entry, CompactionResult {
-        original_count,
-        compacted_count: 1 + keep_recent,
-        summarized_count,
-    }))
+    Ok((
+        summary_entry,
+        CompactionResult {
+            original_count,
+            compacted_count: 1 + keep_recent,
+            summarized_count,
+        },
+    ))
 }
 
 /// 构建压缩后的条目列表：summary + 最近的 keep_recent 条消息。
@@ -82,18 +88,15 @@ pub fn build_compacted_entries(
     summary_entry: MessageEntry,
     keep_recent: usize,
 ) -> Vec<SessionEntry> {
-    let messages: Vec<SessionEntry> = entries.iter()
+    let messages: Vec<SessionEntry> = entries
+        .iter()
         .filter_map(|e| match e {
             SessionEntry::Message(m) if m.role != "system" => Some(e.clone()),
             _ => None,
         })
         .collect();
 
-    let recent: Vec<SessionEntry> = messages.into_iter()
-        .rev()
-        .take(keep_recent)
-        .rev()
-        .collect();
+    let recent: Vec<SessionEntry> = messages.into_iter().rev().take(keep_recent).rev().collect();
 
     let mut result = vec![SessionEntry::Message(summary_entry)];
     result.extend(recent);
@@ -137,7 +140,12 @@ mod tests {
     #[test]
     fn create_summary_works() {
         let entries: Vec<SessionEntry> = (0..20)
-            .map(|i| make_entry(&format!("{}", i), if i % 2 == 0 { "user" } else { "assistant" }))
+            .map(|i| {
+                make_entry(
+                    &format!("{}", i),
+                    if i % 2 == 0 { "user" } else { "assistant" },
+                )
+            })
             .collect();
 
         let (summary, result) = create_summary(&entries, "Summary text", 5).unwrap();
@@ -157,7 +165,7 @@ mod tests {
         let compacted = build_compacted_entries(&entries, summary, 3);
 
         assert_eq!(compacted.len(), 4); // 1 summary + 3 recent
-        // 最后 3 条应该保留
+                                        // 最后 3 条应该保留
         if let SessionEntry::Message(m) = &compacted[3] {
             assert_eq!(m.id, "9"); // 最后一条
         } else {

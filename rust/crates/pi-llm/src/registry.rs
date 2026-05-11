@@ -26,7 +26,16 @@ impl ProviderRegistry {
         drivers.insert("openai".to_string(), openai);
 
         // OpenAI-compatible providers（共享 OpenAI driver）
-        for name in &["glm", "deepseek", "groq", "openrouter", "together", "fireworks", "mistral", "xai"] {
+        for name in &[
+            "glm",
+            "deepseek",
+            "groq",
+            "openrouter",
+            "together",
+            "fireworks",
+            "mistral",
+            "xai",
+        ] {
             drivers.insert((*name).to_string(), Arc::new(OpenAiDriver::new()));
         }
 

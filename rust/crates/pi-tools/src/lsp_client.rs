@@ -67,7 +67,10 @@ impl LspClient {
         let body = serde_json::to_string(&request)?;
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
 
-        let stdin = self.process.stdin.as_mut()
+        let stdin = self
+            .process
+            .stdin
+            .as_mut()
             .context("LSP process stdin not available")?;
         use std::io::Write;
         stdin.write_all(header.as_bytes())?;
@@ -89,7 +92,10 @@ impl LspClient {
         let body = serde_json::to_string(&notification)?;
         let header = format!("Content-Length: {}\r\n\r\n", body.len());
 
-        let stdin = self.process.stdin.as_mut()
+        let stdin = self
+            .process
+            .stdin
+            .as_mut()
             .context("LSP process stdin not available")?;
         use std::io::Write;
         stdin.write_all(header.as_bytes())?;
@@ -100,7 +106,10 @@ impl LspClient {
 
     /// 读取 JSON-RPC 响应。
     fn read_response(&mut self) -> Result<Value> {
-        let stdout = self.process.stdout.as_mut()
+        let stdout = self
+            .process
+            .stdout
+            .as_mut()
             .context("LSP process stdout not available")?;
         use std::io::Read;
 
@@ -176,7 +185,9 @@ impl LspClient {
             if let Ok(list) = serde_json::from_value::<CompletionList>(result.clone()) {
                 list.items
             } else if let Some(arr) = result.as_array() {
-                arr.iter().filter_map(|v| serde_json::from_value(v.clone()).ok()).collect()
+                arr.iter()
+                    .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                    .collect()
             } else {
                 Vec::new()
             }

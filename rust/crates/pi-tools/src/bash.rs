@@ -5,7 +5,7 @@
 use async_trait::async_trait;
 use serde_json::Value;
 use tokio::process::Command;
-use tokio::time::{Duration, timeout};
+use tokio::time::{timeout, Duration};
 
 use pi_types::error::PiError;
 use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
@@ -67,9 +67,7 @@ impl ToolExecutor for BashTool {
             })?
             .to_string();
 
-        let timeout_secs = input["timeout"]
-            .as_u64()
-            .unwrap_or(self.timeout_secs);
+        let timeout_secs = input["timeout"].as_u64().unwrap_or(self.timeout_secs);
 
         let result = timeout(Duration::from_secs(timeout_secs), async {
             let output = Command::new("bash")

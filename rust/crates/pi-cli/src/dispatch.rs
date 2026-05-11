@@ -3,30 +3,30 @@
 use std::env;
 use std::sync::Arc;
 
-use anyhow::{Context, Result, anyhow, bail};
+use anyhow::{anyhow, bail, Context, Result};
 
 use crate::args::Cli;
 use crate::auth::AuthStorage;
 use crate::config;
 
-use pi_agent::loop_engine::{AgentLoop, StreamSink};
 use pi_agent::context;
+use pi_agent::loop_engine::{AgentLoop, StreamSink};
 use pi_agent::skills;
 use pi_agent::system_prompt::SystemPromptBuilder;
 use pi_llm::driver::LlmDriver;
-use pi_llm::openai::OpenAiDriver;
 use pi_llm::gemini::GeminiDriver;
+use pi_llm::openai::OpenAiDriver;
 use pi_llm::providers::AnthropicDriver;
 use pi_session::manager::SessionManager;
 use pi_session::JsonlSession;
 use pi_tools::bash::BashTool;
-use pi_tools::read::ReadTool;
-use pi_tools::write::WriteTool;
 use pi_tools::edit::EditTool;
 use pi_tools::find::FindTool;
 use pi_tools::grep::GrepTool;
 use pi_tools::ls::LsTool;
+use pi_tools::read::ReadTool;
 use pi_tools::registry::ToolRegistry;
+use pi_tools::write::WriteTool;
 use pi_tui;
 
 /// 启动流水线。
@@ -100,33 +100,48 @@ async fn run_print(cli: Cli) -> Result<()> {
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
     // 确定 provider（优先级：CLI > config > env > default）
-    let provider_env = std::env::var("PISO_PROVIDER").ok()
+    let provider_env = std::env::var("PISO_PROVIDER")
+        .ok()
         .or_else(|| std::env::var("PI_PROVIDER").ok());
-    let provider = cli.provider.as_deref()
+    let provider = cli
+        .provider
+        .as_deref()
         .or(cfg.provider.as_deref())
         .or(provider_env.as_deref())
         .unwrap_or("anthropic");
 
-    let api_key = cli.api_key.as_deref()
+    let api_key = cli
+        .api_key
+        .as_deref()
         .or_else(|| auth.get_key(provider))
-        .ok_or_else(|| anyhow!(
+        .ok_or_else(|| {
+            anyhow!(
             "No API key found for provider '{}'. Set {}_API_KEY or configure ~/.piso/models.json",
             provider,
             provider.to_uppercase().replace('-', "_"),
-        ))?;
+        )
+        })?;
 
     // 确定 model（优先级：CLI > config > env > default）
-    let model_env = std::env::var("PISO_MODEL").ok()
+    let model_env = std::env::var("PISO_MODEL")
+        .ok()
         .or_else(|| std::env::var("PI_MODEL").ok());
-    let model = cli.model.as_deref()
+    let model = cli
+        .model
+        .as_deref()
         .or(cfg.model.as_deref())
         .or(model_env.as_deref())
         .unwrap_or("claude-sonnet-4-20250514");
 
     // 从 models.json 获取 provider 配置
     let provider_config = auth.get_provider(provider);
-    let api_type = provider_config.map(|c| c.api.as_str()).unwrap_or_else(|| default_api_type(provider));
-    let base_url = cli.base_url.clone().or_else(|| provider_config.and_then(|c| c.base_url.clone()));
+    let api_type = provider_config
+        .map(|c| c.api.as_str())
+        .unwrap_or_else(|| default_api_type(provider));
+    let base_url = cli
+        .base_url
+        .clone()
+        .or_else(|| provider_config.and_then(|c| c.base_url.clone()));
 
     // 根据 API 类型创建对应的 LLM driver
     let driver: Box<dyn LlmDriver> = match api_type {
@@ -164,7 +179,11 @@ async fn run_print(cli: Cli) -> Result<()> {
 
     // --tools 白名单过滤
     if let Some(tool_list) = &cli.tools {
-        let allowed: Vec<&str> = tool_list.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+        let allowed: Vec<&str> = tool_list
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty())
+            .collect();
         tools.retain(|name| allowed.contains(&name));
     }
 
@@ -188,17 +207,12 @@ async fn run_print(cli: Cli) -> Result<()> {
     // 加载上下文文件（AGENTS.md 等）
     if !cli.no_context_files {
         let agent_dir = config_dir.as_deref();
-        let ctx_files = context::load_project_context_files(
-            &cwd,
-            agent_dir,
-        );
+        let ctx_files = context::load_project_context_files(&cwd, agent_dir);
         if !ctx_files.is_empty() {
             for ctx in &ctx_files {
                 eprintln!("[context] {}", ctx.path.display());
             }
-            prompt_builder = prompt_builder.append(
-                context::format_context_for_prompt(&ctx_files)
-            );
+            prompt_builder = prompt_builder.append(context::format_context_for_prompt(&ctx_files));
         }
     }
 
@@ -210,9 +224,8 @@ async fn run_print(cli: Cli) -> Result<()> {
             for s in &loaded_skills {
                 eprintln!("[skill] {} ({})", s.name, s.source);
             }
-            prompt_builder = prompt_builder.append(
-                skills::format_skills_for_prompt(&loaded_skills)
-            );
+            prompt_builder =
+                prompt_builder.append(skills::format_skills_for_prompt(&loaded_skills));
         }
     }
 
@@ -303,7 +316,10 @@ async fn resolve_session(
         eprintln!("Recent sessions:");
         for s in sessions.iter().take(5) {
             let indicator = if s.is_today { "*" } else { " " };
-            eprintln!("  {} {} ({} messages, cwd: {})", indicator, s.id, s.message_count, s.cwd);
+            eprintln!(
+                "  {} {} ({} messages, cwd: {})",
+                indicator, s.id, s.message_count, s.cwd
+            );
         }
         return mgr.open(&sessions[0].id).await;
     }
@@ -314,7 +330,9 @@ async fn resolve_session(
         let entries = source.entries();
 
         // 查找分叉点
-        let fork_idx = entries.iter().position(|e| e.id() == fork_at)
+        let fork_idx = entries
+            .iter()
+            .position(|e| e.id() == fork_at)
             .ok_or_else(|| anyhow!("Message '{}' not found in session", fork_at))?;
 
         // 创建新会话，复制分叉点之前的条目
@@ -323,7 +341,11 @@ async fn resolve_session(
             new_session.append(entry.clone()).await?;
         }
 
-        eprintln!("Forked session at message '{}' ({} entries copied)", fork_at, fork_idx + 1);
+        eprintln!(
+            "Forked session at message '{}' ({} entries copied)",
+            fork_at,
+            fork_idx + 1
+        );
         return Ok(new_session);
     }
 
@@ -338,37 +360,53 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let config_dir = config::config_dir();
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
-    let provider_env = std::env::var("PISO_PROVIDER").ok()
+    let provider_env = std::env::var("PISO_PROVIDER")
+        .ok()
         .or_else(|| std::env::var("PI_PROVIDER").ok());
-    let provider = cli.provider.clone()
+    let provider = cli
+        .provider
+        .clone()
         .or(cfg.provider.clone())
         .or(provider_env)
         .unwrap_or_else(|| "anthropic".to_string());
 
-    let api_key = cli.api_key.clone()
+    let api_key = cli
+        .api_key
+        .clone()
         .or_else(|| auth.get_key(&provider).map(|s| s.to_string()))
-        .ok_or_else(|| anyhow!(
+        .ok_or_else(|| {
+            anyhow!(
             "No API key found for provider '{}'. Set {}_API_KEY or configure ~/.piso/models.json",
             provider,
             provider.to_uppercase().replace('-', "_"),
-        ))?;
+        )
+        })?;
 
-    let model_env = std::env::var("PISO_MODEL").ok()
+    let model_env = std::env::var("PISO_MODEL")
+        .ok()
         .or_else(|| std::env::var("PI_MODEL").ok());
-    let model = cli.model.clone()
+    let model = cli
+        .model
+        .clone()
         .or(cfg.model.clone())
         .or(model_env)
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
     let provider_config = auth.get_provider(&provider);
-    let api_type = provider_config.map(|c| c.api.clone()).unwrap_or_else(|| default_api_type(&provider).to_string());
+    let api_type = provider_config
+        .map(|c| c.api.clone())
+        .unwrap_or_else(|| default_api_type(&provider).to_string());
     let base_url = provider_config.and_then(|c| c.base_url.clone());
 
     let effective_base_url = if api_type == "openai-completions" || api_type == "openai-responses" {
         base_url.map(|url| {
-            if url.ends_with("/chat/completions") { url }
-            else if url.ends_with('/') { format!("{}chat/completions", url) }
-            else { format!("{}/chat/completions", url) }
+            if url.ends_with("/chat/completions") {
+                url
+            } else if url.ends_with('/') {
+                format!("{}chat/completions", url)
+            } else {
+                format!("{}/chat/completions", url)
+            }
         })
     } else {
         base_url
@@ -382,9 +420,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
             for cf in &ctx_files {
                 eprintln!("[context] {}", cf.path.display());
             }
-            prompt_builder = prompt_builder.append(
-                context::format_context_for_prompt(&ctx_files)
-            );
+            prompt_builder = prompt_builder.append(context::format_context_for_prompt(&ctx_files));
         }
     }
 
@@ -396,9 +432,8 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
             for s in &loaded_skills {
                 eprintln!("[skill] {}", s.name);
             }
-            prompt_builder = prompt_builder.append(
-                skills::format_skills_for_prompt(&loaded_skills)
-            );
+            prompt_builder =
+                prompt_builder.append(skills::format_skills_for_prompt(&loaded_skills));
         }
     }
 
@@ -413,9 +448,9 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     if let Some(patterns) = &cli.models {
         let patterns: Vec<&str> = patterns.split(',').map(|s| s.trim()).collect();
         available_models.retain(|(prov, _id, _name)| {
-            patterns.iter().any(|p| {
-                prov.contains(p) || _id.contains(p) || _name.contains(p)
-            })
+            patterns
+                .iter()
+                .any(|p| prov.contains(p) || _id.contains(p) || _name.contains(p))
         });
     }
 
@@ -450,37 +485,48 @@ async fn run_rpc(cli: Cli) -> Result<()> {
     let config_dir = config::config_dir();
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
-    let provider_env = std::env::var("PISO_PROVIDER").ok()
+    let provider_env = std::env::var("PISO_PROVIDER")
+        .ok()
         .or_else(|| std::env::var("PI_PROVIDER").ok());
-    let provider = cli.provider.clone()
+    let provider = cli
+        .provider
+        .clone()
         .or(cfg.provider.clone())
         .or(provider_env)
         .unwrap_or_else(|| "anthropic".to_string());
 
-    let api_key = cli.api_key.clone()
+    let api_key = cli
+        .api_key
+        .clone()
         .or_else(|| auth.get_key(&provider).map(|s| s.to_string()))
-        .ok_or_else(|| anyhow!(
-            "No API key found for provider '{}'",
-            provider,
-        ))?;
+        .ok_or_else(|| anyhow!("No API key found for provider '{}'", provider,))?;
 
-    let model_env = std::env::var("PISO_MODEL").ok()
+    let model_env = std::env::var("PISO_MODEL")
+        .ok()
         .or_else(|| std::env::var("PI_MODEL").ok());
-    let model = cli.model.clone()
+    let model = cli
+        .model
+        .clone()
         .or(cfg.model.clone())
         .or(model_env)
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
     let provider_config = auth.get_provider(&provider);
-    let api_type = provider_config.map(|c| c.api.clone()).unwrap_or_else(|| default_api_type(&provider).to_string());
+    let api_type = provider_config
+        .map(|c| c.api.clone())
+        .unwrap_or_else(|| default_api_type(&provider).to_string());
     let base_url = provider_config.and_then(|c| c.base_url.clone());
 
     // OpenAI-compat 需要追加 /chat/completions
     let effective_base_url = if api_type == "openai-completions" || api_type == "openai-responses" {
         base_url.map(|url| {
-            if url.ends_with("/chat/completions") { url }
-            else if url.ends_with('/') { format!("{}chat/completions", url) }
-            else { format!("{}/chat/completions", url) }
+            if url.ends_with("/chat/completions") {
+                url
+            } else if url.ends_with('/') {
+                format!("{}chat/completions", url)
+            } else {
+                format!("{}/chat/completions", url)
+            }
         })
     } else {
         base_url
@@ -490,9 +536,7 @@ async fn run_rpc(cli: Cli) -> Result<()> {
     if !cli.no_context_files {
         let ctx_files = context::load_project_context_files(&cwd, config_dir.as_deref());
         if !ctx_files.is_empty() {
-            prompt_builder = prompt_builder.append(
-                context::format_context_for_prompt(&ctx_files)
-            );
+            prompt_builder = prompt_builder.append(context::format_context_for_prompt(&ctx_files));
         }
     }
 
@@ -503,13 +547,15 @@ async fn run_rpc(cli: Cli) -> Result<()> {
         effective_base_url,
         prompt_builder.build(),
         cwd,
-    ).await
+    )
+    .await
 }
 
 /// 根据 provider 名推断默认 API type（无 models.json 配置时的 fallback）。
 fn default_api_type(provider: &str) -> &'static str {
     match provider {
-        "openai" | "deepseek" | "groq" | "openrouter" | "together" | "fireworks" | "glm" | "zhipu" => "openai-completions",
+        "openai" | "deepseek" | "groq" | "openrouter" | "together" | "fireworks" | "glm"
+        | "zhipu" => "openai-completions",
         "google" | "gemini" => "google-gemini",
         _ => "anthropic-messages",
     }
@@ -521,7 +567,11 @@ async fn run_list_models(_cli: Cli) -> Result<()> {
 
     println!("Configured providers:");
     for name in auth.configured_providers() {
-        let key_status = if auth.get_key(&name).is_some() { "API key found" } else { "no API key" };
+        let key_status = if auth.get_key(&name).is_some() {
+            "API key found"
+        } else {
+            "no API key"
+        };
         let config = auth.get_provider(&name);
         let api = config.map(|c| c.api.as_str()).unwrap_or("unknown");
         println!("  {name} ({api}, {key_status})");
@@ -530,7 +580,9 @@ async fn run_list_models(_cli: Cli) -> Result<()> {
     if auth.configured_providers().is_empty() {
         let available = auth.available_providers();
         if available.is_empty() {
-            println!("  No providers configured. Set ANTHROPIC_API_KEY or configure ~/.piso/models.json");
+            println!(
+                "  No providers configured. Set ANTHROPIC_API_KEY or configure ~/.piso/models.json"
+            );
         } else {
             println!("Providers with API keys from environment:");
             for name in available {
@@ -604,8 +656,8 @@ fn read_piped_stdin() -> Option<String> {
 async fn run_init() -> Result<()> {
     use std::io::Write;
 
-    let config_dir = config::config_dir()
-        .ok_or_else(|| anyhow!("Cannot determine home directory"))?;
+    let config_dir =
+        config::config_dir().ok_or_else(|| anyhow!("Cannot determine home directory"))?;
 
     // 创建目录
     std::fs::create_dir_all(&config_dir)?;
@@ -691,14 +743,18 @@ async fn run_export(cli: &Cli, output_path: &str) -> Result<()> {
         session_id.clone()
     } else if cli.r#continue {
         let sessions = mgr.list().await?;
-        sessions.first()
+        sessions
+            .first()
             .ok_or_else(|| anyhow!("No sessions found"))?
-            .id.clone()
+            .id
+            .clone()
     } else {
         let sessions = mgr.list().await?;
-        sessions.first()
+        sessions
+            .first()
             .ok_or_else(|| anyhow!("No sessions found. Use --session <id> or --continue"))?
-            .id.clone()
+            .id
+            .clone()
     };
     let session = mgr.open(&session_id).await?;
 
@@ -742,7 +798,8 @@ fn render_session_html(session: &JsonlSession) -> String {
         }
     }
 
-    format!(r#"<!DOCTYPE html>
+    format!(
+        r#"<!DOCTYPE html>
 <html>
 <head>
 <meta charset="utf-8">
@@ -768,17 +825,25 @@ body {{ font-family: -apple-system, sans-serif; max-width: 800px; margin: 0 auto
 <p style="color:#666">ID: {}</p>
 {}
 </body>
-</html>"#, session.id(), session.id(), body)
+</html>"#,
+        session.id(),
+        session.id(),
+        body
+    )
 }
 
 /// 从 JSON content 数组提取纯文本（dispatch 内部辅助）。
 fn extract_text_from_content(content: &serde_json::Value) -> String {
-    content.as_array()
+    content
+        .as_array()
         .map(|arr| {
             arr.iter()
                 .filter_map(|block| {
                     if block.get("type").and_then(|v| v.as_str()) == Some("text") {
-                        block.get("text").and_then(|v| v.as_str()).map(|s| s.to_string())
+                        block
+                            .get("text")
+                            .and_then(|v| v.as_str())
+                            .map(|s| s.to_string())
                     } else {
                         None
                     }
@@ -842,7 +907,7 @@ fn inline_html(text: &str) -> String {
     // **bold**
     let text = regex_replace(&text, r"\*\*([^*]+)\*\*", "<strong>$1</strong>");
     // `code`
-    
+
     regex_replace(&text, r"`([^`]+)`", "<code>$1</code>")
 }
 
@@ -859,7 +924,10 @@ fn regex_replace(text: &str, _pattern: &str, replacement: &str) -> String {
             current.clear();
             let mut code = String::new();
             while let Some(&c) = chars.peek() {
-                if c == '`' { chars.next(); break; }
+                if c == '`' {
+                    chars.next();
+                    break;
+                }
                 code.push(chars.next().unwrap());
             }
             result.push_str(&replacement.replace("$1", &code));
@@ -869,7 +937,16 @@ fn regex_replace(text: &str, _pattern: &str, replacement: &str) -> String {
             current.clear();
             let mut bold = String::new();
             while let Some(&c) = chars.peek() {
-                if c == '*' { chars.next(); if chars.peek() == Some(&'*') { chars.next(); break; } else { bold.push('*'); continue; } }
+                if c == '*' {
+                    chars.next();
+                    if chars.peek() == Some(&'*') {
+                        chars.next();
+                        break;
+                    } else {
+                        bold.push('*');
+                        continue;
+                    }
+                }
                 bold.push(chars.next().unwrap());
             }
             result.push_str(&format!("<strong>{}</strong>", bold));
@@ -884,7 +961,7 @@ fn regex_replace(text: &str, _pattern: &str, replacement: &str) -> String {
 /// HTML 转义。
 fn html_escape(s: &str) -> String {
     s.replace('&', "&amp;")
-     .replace('<', "&lt;")
-     .replace('>', "&gt;")
-     .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
 }

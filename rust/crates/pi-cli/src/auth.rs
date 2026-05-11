@@ -63,7 +63,10 @@ pub struct AuthStorage {
 impl AuthStorage {
     /// 创建空的 AuthStorage。
     pub fn empty() -> Self {
-        Self { keys: HashMap::new(), providers: HashMap::new() }
+        Self {
+            keys: HashMap::new(),
+            providers: HashMap::new(),
+        }
     }
 
     /// 从环境变量和配置文件加载所有可用的 API Key 和 provider 配置。
@@ -100,8 +103,8 @@ impl AuthStorage {
             }
 
             // 4. 兼容：~/.pi/agent/models.json（TS 版本配置，只读）
-            let ts_models = dirs::home_dir()
-                .map(|h| h.join(".pi").join("agent").join("models.json"));
+            let ts_models =
+                dirs::home_dir().map(|h| h.join(".pi").join("agent").join("models.json"));
             if let Some(ts_path) = ts_models {
                 if ts_path.exists() {
                     load_models_json(&ts_path, &mut keys, &mut providers);
@@ -139,34 +142,47 @@ fn load_models_json(
     keys: &mut HashMap<String, String>,
     providers: &mut HashMap<String, ProviderConfig>,
 ) {
-    let Ok(content) = std::fs::read_to_string(path) else { return };
-    let Ok(doc) = serde_json::from_str::<serde_json::Value>(&content) else { return };
-    let Some(provs) = doc.get("providers").and_then(|p| p.as_object()) else { return };
+    let Ok(content) = std::fs::read_to_string(path) else {
+        return;
+    };
+    let Ok(doc) = serde_json::from_str::<serde_json::Value>(&content) else {
+        return;
+    };
+    let Some(provs) = doc.get("providers").and_then(|p| p.as_object()) else {
+        return;
+    };
 
     for (name, config) in provs {
         let pc = ProviderConfig {
             name: name.clone(),
-            api: config.get("api")
+            api: config
+                .get("api")
                 .and_then(|v| v.as_str())
                 .unwrap_or("openai-completions")
                 .to_string(),
-            base_url: config.get("baseUrl")
+            base_url: config
+                .get("baseUrl")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
-            api_key: config.get("apiKey")
+            api_key: config
+                .get("apiKey")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
-            models: config.get("models")
+            models: config
+                .get("models")
                 .and_then(|v| v.as_array())
                 .map(|arr| {
-                    arr.iter().filter_map(|m| {
-                        let id = m.get("id")?.as_str()?.to_string();
-                        let name = m.get("name")
-                            .and_then(|v| v.as_str())
-                            .unwrap_or(&id)
-                            .to_string();
-                        Some(ModelInfo { id, name })
-                    }).collect()
+                    arr.iter()
+                        .filter_map(|m| {
+                            let id = m.get("id")?.as_str()?.to_string();
+                            let name = m
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or(&id)
+                                .to_string();
+                            Some(ModelInfo { id, name })
+                        })
+                        .collect()
                 })
                 .unwrap_or_default(),
         };
@@ -188,20 +204,18 @@ fn load_models_json(
 
     // 检查每个 provider 是否有 API key
     for (name, pc) in providers.iter() {
-        let has_key = keys.contains_key(name)
-            || pc.api_key.as_ref().is_some_and(|k| !k.is_empty());
+        let has_key = keys.contains_key(name) || pc.api_key.as_ref().is_some_and(|k| !k.is_empty());
         if !has_key && pc.base_url.is_none() {
             eprintln!("Warning: provider '{}' has no API key configured", name);
         }
     }
 }
 
-
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn empty_auth_storage() {
@@ -245,12 +259,18 @@ mod tests {
     }
 
     /// Guard to set and restore an env var.
-    struct EnvGuard { key: String, old: Option<String> }
+    struct EnvGuard {
+        key: String,
+        old: Option<String>,
+    }
     impl EnvGuard {
         fn set(key: &str, val: &str) -> Self {
             let old = std::env::var(key).ok();
             std::env::set_var(key, val);
-            Self { key: key.to_string(), old }
+            Self {
+                key: key.to_string(),
+                old,
+            }
         }
     }
     impl Drop for EnvGuard {

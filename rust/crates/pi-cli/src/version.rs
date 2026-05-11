@@ -3,7 +3,6 @@
 //! 仅在非 offline 模式下检查。结果以 hint 形式输出到 stderr。
 //! 不会阻塞启动。
 
-
 /// 当前 piso 版本。
 pub const VERSION: &str = env!("CARGO_PKG_VERSION");
 
@@ -28,7 +27,8 @@ pub async fn check_for_update() -> Option<String> {
     }
 
     let body: serde_json::Value = resp.json().await.ok()?;
-    let latest = body.get("crate")
+    let latest = body
+        .get("crate")
         .and_then(|c| c.get("max_version"))
         .and_then(|v| v.as_str())?;
 

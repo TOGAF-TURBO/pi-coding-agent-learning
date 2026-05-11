@@ -192,7 +192,10 @@ mod tests {
     #[test]
     fn resolve_hex_colors() {
         let t = Theme::dark();
-        assert_eq!(t.resolve(&ColorDef("#ff8800".into())), Color::Rgb(255, 136, 0));
+        assert_eq!(
+            t.resolve(&ColorDef("#ff8800".into())),
+            Color::Rgb(255, 136, 0)
+        );
         // 6-char hex without # is NOT hex, it's a named color that resolves to Reset
     }
 

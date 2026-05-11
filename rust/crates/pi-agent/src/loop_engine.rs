@@ -13,7 +13,7 @@
 use std::io::Write;
 use std::sync::Arc;
 
-use anyhow::{Context, Result, anyhow};
+use anyhow::{anyhow, Context, Result};
 use futures::StreamExt;
 use pi_llm::driver::{CompletionRequest, LlmDriver, StreamEvent};
 use pi_session::JsonlSession;
@@ -103,9 +103,7 @@ impl AgentLoop {
             session,
             driver,
             tools,
-            system_prompt: SystemPromptBuilder::new(".")
-                .with_tool_guides()
-                .build(),
+            system_prompt: SystemPromptBuilder::new(".").with_tool_guides().build(),
             model: model_name,
             max_tokens: 16384,
             max_iterations: 50,
@@ -228,7 +226,10 @@ impl AgentLoop {
             // 大多数模型 context window >= 128K，当估算超过 100K 时触发压缩
             if estimated > 100_000 {
                 self.emit(StreamEvent::Error {
-                    message: format!("Context budget near limit (~{} tokens), compacting...", estimated),
+                    message: format!(
+                        "Context budget near limit (~{} tokens), compacting...",
+                        estimated
+                    ),
                 });
                 if let Err(e) = self.compact_context().await {
                     self.emit(StreamEvent::Error {
@@ -281,9 +282,14 @@ impl AgentLoop {
                 parent_id: self.session.leaf_id().map(|s| s.to_string()),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 role: "assistant".to_string(),
-                content: serde_json::json!(assistant_content.iter().map(content_block_to_json).collect::<Vec<_>>()),
+                content: serde_json::json!(assistant_content
+                    .iter()
+                    .map(content_block_to_json)
+                    .collect::<Vec<_>>()),
                 model: Some(self.model.clone()),
-                stop_reason: response.stop_reason.map(|r| format!("{r:?}").to_lowercase()),
+                stop_reason: response
+                    .stop_reason
+                    .map(|r| format!("{r:?}").to_lowercase()),
                 usage: None,
             };
             self.session
@@ -349,7 +355,10 @@ impl AgentLoop {
                 parent_id: self.session.leaf_id().map(|s| s.to_string()),
                 timestamp: chrono::Utc::now().to_rfc3339(),
                 role: "user".to_string(),
-                content: serde_json::json!(tool_results.iter().map(content_block_to_json).collect::<Vec<_>>()),
+                content: serde_json::json!(tool_results
+                    .iter()
+                    .map(content_block_to_json)
+                    .collect::<Vec<_>>()),
                 model: None,
                 stop_reason: None,
                 usage: None,
@@ -424,7 +433,10 @@ impl AgentLoop {
                 self.emit(StreamEvent::Error {
                     message: format!("Stream timed out after {}s", self.stream_timeout_secs),
                 });
-                Err(anyhow!("Stream timed out after {}s", self.stream_timeout_secs))
+                Err(anyhow!(
+                    "Stream timed out after {}s",
+                    self.stream_timeout_secs
+                ))
             }
         }
     }
@@ -457,7 +469,12 @@ impl AgentLoop {
                     resp.tool_calls[index].id = id;
                     resp.tool_calls[index].name = name;
                 }
-                Ok(StreamEvent::ToolCallEnd { index, id, name, input }) => {
+                Ok(StreamEvent::ToolCallEnd {
+                    index,
+                    id,
+                    name,
+                    input,
+                }) => {
                     while resp.tool_calls.len() <= index {
                         resp.tool_calls.push(ToolCallInfo {
                             id: String::new(),
@@ -477,7 +494,9 @@ impl AgentLoop {
                     self.emit(StreamEvent::Usage(usage.clone()));
                 }
                 Ok(StreamEvent::Error { message }) => {
-                    self.emit(StreamEvent::Error { message: message.clone() });
+                    self.emit(StreamEvent::Error {
+                        message: message.clone(),
+                    });
                     return Err(anyhow!("LLM error: {message}"));
                 }
                 Ok(StreamEvent::Start) => {}
@@ -496,11 +515,10 @@ impl AgentLoop {
     /// 执行单个工具调用。
     async fn execute_tool(&self, name: &str, input: serde_json::Value) -> Result<ToolResult> {
         match self.tools.get(name) {
-            Some(executor) => {
-                executor.execute(input)
-                    .await
-                    .map_err(|e| anyhow!("Tool '{}' execution failed: {}", name, e))
-            }
+            Some(executor) => executor
+                .execute(input)
+                .await
+                .map_err(|e| anyhow!("Tool '{}' execution failed: {}", name, e)),
             None => Err(anyhow!("Unknown tool: {name}")),
         }
     }
@@ -596,14 +614,19 @@ impl AgentLoop {
                     "assistant" => {
                         let blocks = parse_content_blocks(&me.content);
                         if !blocks.is_empty() {
-                            messages.push(Message::Assistant(pi_types::message::AssistantMessage {
-                                role: "assistant".to_string(),
-                                content: blocks,
-                                model: me.model.clone(),
-                                stop_reason: me.stop_reason.as_deref().and_then(parse_stop_reason),
-                                usage: None,
-                                timestamp: Some(me.timestamp.clone()),
-                            }));
+                            messages.push(Message::Assistant(
+                                pi_types::message::AssistantMessage {
+                                    role: "assistant".to_string(),
+                                    content: blocks,
+                                    model: me.model.clone(),
+                                    stop_reason: me
+                                        .stop_reason
+                                        .as_deref()
+                                        .and_then(parse_stop_reason),
+                                    usage: None,
+                                    timestamp: Some(me.timestamp.clone()),
+                                },
+                            ));
                         }
                     }
                     _ => {}
@@ -617,7 +640,8 @@ impl AgentLoop {
 
 /// 从 JSON content 数组解析 ContentBlock 列表。
 fn parse_content_blocks(content: &serde_json::Value) -> Vec<ContentBlock> {
-    content.as_array()
+    content
+        .as_array()
         .map(|arr| {
             arr.iter()
                 .filter_map(|block| {
@@ -628,16 +652,42 @@ fn parse_content_blocks(content: &serde_json::Value) -> Vec<ContentBlock> {
                             Some(ContentBlock::text(text))
                         }
                         "tool_use" => {
-                            let id = block.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let name = block.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let input = block.get("input").cloned().unwrap_or(serde_json::Value::Null);
+                            let id = block
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let name = block
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let input = block
+                                .get("input")
+                                .cloned()
+                                .unwrap_or(serde_json::Value::Null);
                             Some(ContentBlock::tool_call(id, name, input))
                         }
                         "tool_result" => {
-                            let tool_use_id = block.get("tool_use_id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let result_content = block.get("content").and_then(|v| v.as_str()).unwrap_or("").to_string();
-                            let is_error = block.get("is_error").and_then(|v| v.as_bool()).unwrap_or(false);
-                            Some(ContentBlock::tool_result(tool_use_id, result_content, is_error))
+                            let tool_use_id = block
+                                .get("tool_use_id")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let result_content = block
+                                .get("content")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or("")
+                                .to_string();
+                            let is_error = block
+                                .get("is_error")
+                                .and_then(|v| v.as_bool())
+                                .unwrap_or(false);
+                            Some(ContentBlock::tool_result(
+                                tool_use_id,
+                                result_content,
+                                is_error,
+                            ))
                         }
                         _ => None,
                     }

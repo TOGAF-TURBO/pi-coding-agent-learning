@@ -73,16 +73,20 @@ impl VertexDriver {
 }
 
 impl Default for VertexDriver {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl LlmDriver for VertexDriver {
-    fn name(&self) -> &str { "google-vertex" }
+    fn name(&self) -> &str {
+        "google-vertex"
+    }
 
     fn stream(&self, request: CompletionRequest) -> Result<StreamResult, anyhow::Error> {
-        let project = Self::project()
-            .ok_or_else(|| anyhow::anyhow!("GOOGLE_CLOUD_PROJECT not set"))?;
+        let project =
+            Self::project().ok_or_else(|| anyhow::anyhow!("GOOGLE_CLOUD_PROJECT not set"))?;
         let location = Self::location();
         let url = Self::build_url(&project, &location, &request.model);
 
@@ -91,7 +95,9 @@ impl LlmDriver for VertexDriver {
         for msg in &request.messages {
             match msg {
                 pi_types::message::Message::User(u) => {
-                    let texts: Vec<_> = u.content.iter()
+                    let texts: Vec<_> = u
+                        .content
+                        .iter()
                         .filter_map(|b| match b {
                             pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
                             _ => None,
@@ -105,7 +111,9 @@ impl LlmDriver for VertexDriver {
                     }
                 }
                 pi_types::message::Message::Assistant(a) => {
-                    let texts: Vec<_> = a.content.iter()
+                    let texts: Vec<_> = a
+                        .content
+                        .iter()
                         .filter_map(|b| match b {
                             pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
                             _ => None,
@@ -133,18 +141,23 @@ impl LlmDriver for VertexDriver {
         }
 
         if !request.tools.is_empty() {
-            let decls: Vec<_> = request.tools.iter().map(|t| {
-                json!({
-                    "name": t.name,
-                    "description": t.description,
-                    "parameters": t.parameters,
+            let decls: Vec<_> = request
+                .tools
+                .iter()
+                .map(|t| {
+                    json!({
+                        "name": t.name,
+                        "description": t.description,
+                        "parameters": t.parameters,
+                    })
                 })
-            }).collect();
+                .collect();
             body["tools"] = json!([{"function_declarations": decls}]);
         }
 
         let api_key = request.api_key.clone();
-        let response_future = self.client
+        let response_future = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {api_key}"))
             .header("Content-Type", "application/json")

@@ -6,7 +6,7 @@
 
 use std::path::{Path, PathBuf};
 
-use anyhow::{Result, anyhow, bail};
+use anyhow::{anyhow, bail, Result};
 use chrono::DateTime;
 use tokio::fs;
 
@@ -74,7 +74,9 @@ impl SessionManager {
     /// 恢复最近的会话（`--continue`）。
     pub async fn continue_last(&self) -> Result<JsonlSession> {
         let sessions = self.list().await?;
-        let latest = sessions.first().ok_or_else(|| anyhow!("No previous sessions found"))?;
+        let latest = sessions
+            .first()
+            .ok_or_else(|| anyhow!("No previous sessions found"))?;
         self.open(&latest.id).await
     }
 
@@ -134,11 +136,18 @@ impl SessionManager {
     /// 按部分 ID 查找会话。
     pub async fn find_by_prefix(&self, prefix: &str) -> Result<Option<SessionInfo>> {
         let sessions = self.list().await?;
-        let matches: Vec<_> = sessions.iter().filter(|s| s.id.starts_with(prefix)).collect();
+        let matches: Vec<_> = sessions
+            .iter()
+            .filter(|s| s.id.starts_with(prefix))
+            .collect();
         match matches.len() {
             0 => Ok(None),
             1 => Ok(Some(matches[0].clone())),
-            _ => Err(anyhow!("Ambiguous session prefix '{}', matches {} sessions", prefix, matches.len())),
+            _ => Err(anyhow!(
+                "Ambiguous session prefix '{}', matches {} sessions",
+                prefix,
+                matches.len()
+            )),
         }
     }
 

@@ -31,7 +31,23 @@
 		"release:patch": "node scripts/release.mjs patch",
 		"release:minor": "node scripts/release.mjs minor",
 		"release:major": "node scripts/release.mjs major",
-		"prepare": "husky"
+		"prepare": "husky",
+
+		"rust:build": "cd rust && cargo build --release",
+		"rust:check": "cd rust && cargo check --workspace && cargo clippy --workspace -- -D warnings",
+		"rust:check:quick": "cd rust && cargo check --workspace",
+		"rust:test": "cd rust && cargo test --workspace",
+		"rust:test:quick": "cd rust && cargo test --workspace -- --test-threads=4",
+		"rust:clippy": "cd rust && cargo clippy --workspace -- -D warnings",
+		"rust:fmt": "cd rust && cargo fmt --all -- --check",
+		"rust:fmt:fix": "cd rust && cargo fmt --all",
+		"rust:lint": "cd rust && cargo fmt --all -- --check && cargo clippy --workspace -- -D warnings",
+		"rust:clean": "cd rust && cargo clean",
+		"rust:loc": "cd rust && find crates -name '*.rs' | xargs wc -l | tail -1",
+		"rust:tests": "cd rust && cargo test --workspace 2>&1 | grep 'test result' | awk '{sum+=$4} END{print \"Total:\" sum}'",
+		"rust:run": "cd rust && cargo run --release",
+		"rust:install": "cd rust && cargo install --path crates/pi-cli",
+		"rust:bench": "cd rust && cargo bench --workspace"
 	},
 	"devDependencies": {
 		"@anthropic-ai/sandbox-runtime": "^0.0.26",

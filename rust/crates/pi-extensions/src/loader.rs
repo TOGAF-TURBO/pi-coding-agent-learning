@@ -49,14 +49,22 @@ impl ExtensionLoader {
             merged.on_turn_end.extend(hooks.on_turn_end);
             merged.on_message_start.extend(hooks.on_message_start);
             merged.on_message_end.extend(hooks.on_message_end);
-            merged.on_tool_execution_start.extend(hooks.on_tool_execution_start);
-            merged.on_tool_execution_end.extend(hooks.on_tool_execution_end);
+            merged
+                .on_tool_execution_start
+                .extend(hooks.on_tool_execution_start);
+            merged
+                .on_tool_execution_end
+                .extend(hooks.on_tool_execution_end);
             merged.on_session_start.extend(hooks.on_session_start);
             merged.on_session_compact.extend(hooks.on_session_compact);
             merged.on_session_shutdown.extend(hooks.on_session_shutdown);
             merged.on_error.extend(hooks.on_error);
-            merged.on_before_provider_request.extend(hooks.on_before_provider_request);
-            merged.on_after_provider_response.extend(hooks.on_after_provider_response);
+            merged
+                .on_before_provider_request
+                .extend(hooks.on_before_provider_request);
+            merged
+                .on_after_provider_response
+                .extend(hooks.on_after_provider_response);
             merged.providers.extend(hooks.providers);
             merged.shortcuts.extend(hooks.shortcuts);
             merged.pending_messages.extend(hooks.pending_messages);

@@ -19,8 +19,8 @@
 //! - rpc: JSON-over-stdio 机器接口
 
 pub mod args;
-pub mod config;
 pub mod auth;
+pub mod config;
 pub mod dispatch;
 pub mod rpc;
 pub mod version;

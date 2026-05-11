@@ -74,7 +74,9 @@ impl Selector {
             selector.scroll = selector.selected - visible + 1;
         }
 
-        let lines: Vec<Line> = selector.items.iter()
+        let lines: Vec<Line> = selector
+            .items
+            .iter()
             .skip(selector.scroll)
             .take(visible)
             .enumerate()
@@ -83,7 +85,9 @@ impl Selector {
                 let is_selected = idx == selector.selected;
                 let prefix = if is_selected { " > " } else { "   " };
                 let style = if is_selected {
-                    Style::default().fg(Color::Cyan).add_modifier(Modifier::BOLD)
+                    Style::default()
+                        .fg(Color::Cyan)
+                        .add_modifier(Modifier::BOLD)
                 } else {
                     Style::default().fg(Color::White)
                 };
@@ -97,13 +101,12 @@ impl Selector {
             })
             .collect();
 
-        let para = Paragraph::new(lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .border_style(Style::default().fg(Color::Cyan))
-                    .title(format!(" {} ", selector.title))
-            );
+        let para = Paragraph::new(lines).block(
+            Block::default()
+                .borders(Borders::ALL)
+                .border_style(Style::default().fg(Color::Cyan))
+                .title(format!(" {} ", selector.title)),
+        );
 
         // 清除区域后渲染
         f.render_widget(Clear, area);

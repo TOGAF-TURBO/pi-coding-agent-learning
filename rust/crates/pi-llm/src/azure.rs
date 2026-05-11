@@ -20,7 +20,9 @@ pub struct AzureOpenAiDriver {
 
 impl AzureOpenAiDriver {
     pub fn new() -> Self {
-        Self { client: Client::new() }
+        Self {
+            client: Client::new(),
+        }
     }
 
     fn build_url(base_url: &str, deployment: &str) -> String {
@@ -33,21 +35,28 @@ impl AzureOpenAiDriver {
 }
 
 impl Default for AzureOpenAiDriver {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl LlmDriver for AzureOpenAiDriver {
-    fn name(&self) -> &str { "azure-openai" }
+    fn name(&self) -> &str {
+        "azure-openai"
+    }
 
     fn stream(&self, request: CompletionRequest) -> Result<StreamResult, anyhow::Error> {
-        let base = request.base_url.clone()
+        let base = request
+            .base_url
+            .clone()
             .unwrap_or_else(|| "https://api.openai.azure.com".to_string());
         let url = Self::build_url(&base, &request.model);
         let body = build_openai_request(&request);
         let api_key = request.api_key.clone();
 
-        let response_future = self.client
+        let response_future = self
+            .client
             .post(&url)
             .header("api-key", &api_key)
             .header("content-type", "application/json")

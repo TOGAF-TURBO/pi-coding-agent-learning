@@ -55,7 +55,6 @@ pub struct Settings {
     pub thinking_budgets: Option<ThinkingBudgets>,
 }
 
-
 impl Default for CompactionSettings {
     fn default() -> Self {
         Self {

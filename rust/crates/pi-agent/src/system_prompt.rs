@@ -6,7 +6,6 @@
 //! - 工具使用指南
 //! - 上下文文件（AGENTS.md 等，Phase 2 后续）
 
-
 /// 系统提示构建器。
 pub struct SystemPromptBuilder {
     cwd: String,
@@ -92,7 +91,8 @@ impl SystemPromptBuilder {
 
 /// 默认角色提示。
 fn default_role_prompt(cwd: &str) -> String {
-    format!(r#"You are a helpful coding assistant running in the user's terminal.
+    format!(
+        r#"You are a helpful coding assistant running in the user's terminal.
 
 ## Environment
 
@@ -109,7 +109,8 @@ fn default_role_prompt(cwd: &str) -> String {
 - Use the `read` tool to inspect files before making wide-ranging changes.
 - Never use `git add -A` or `git add .` — always use `git add <specific-file-paths>`.
 - When you don't know something, say so. Don't make up information.
-"#)
+"#
+    )
 }
 
 fn tool_guide_bash() -> String {
@@ -118,7 +119,8 @@ fn tool_guide_bash() -> String {
 - The `command` parameter is required.
 - Default timeout is 120 seconds. Use `timeout` parameter for longer/shorter.
 - Output is truncated at 2000 lines / 1MB.
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn tool_guide_read() -> String {
@@ -126,14 +128,16 @@ fn tool_guide_read() -> String {
 - Returns file content with line numbers.
 - Use `offset` (1-indexed) and `limit` for pagination of large files.
 - Always read files before editing them.
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn tool_guide_write() -> String {
     r#"### write — Create or overwrite files
 - Creates parent directories automatically.
 - Only use for new files or complete rewrites. Use `edit` for targeted changes.
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn tool_guide_edit() -> String {
@@ -142,7 +146,8 @@ fn tool_guide_edit() -> String {
 - `oldText` must be unique in the file (no ambiguous matches).
 - Include enough context in `oldText` to make it unique.
 - When changing multiple locations, make separate `edit` calls for each.
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn tool_guide_find() -> String {
@@ -150,7 +155,8 @@ fn tool_guide_find() -> String {
 - Supports glob patterns (e.g. `**/*.rs`, `src/**/*.ts`).
 - Automatically skips `.git`, `node_modules`, `target`, `dist`.
 - Use `path` to set base directory (default: cwd).
-"#.to_string()
+"#
+    .to_string()
 }
 
 fn tool_guide_grep() -> String {
@@ -159,7 +165,8 @@ fn tool_guide_grep() -> String {
 - Use `include` glob to filter files (e.g. `*.rs`, `*.ts`).
 - Use `case_insensitive: true` for case-insensitive search.
 - Results format: `file:line\tcontent`.
-"#.to_string()
+"#
+    .to_string()
 }
 
 impl Default for SystemPromptBuilder {
@@ -171,8 +178,8 @@ impl Default for SystemPromptBuilder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn basic_prompt_contains_tool_guide() {
@@ -185,16 +192,15 @@ mod tests {
 
     #[test]
     fn custom_prompt_override() {
-        let builder = SystemPromptBuilder::new("/tmp")
-            .with_custom_prompt("You are a test assistant.");
+        let builder =
+            SystemPromptBuilder::new("/tmp").with_custom_prompt("You are a test assistant.");
         let prompt = builder.build();
         assert!(prompt.contains("test assistant"));
     }
 
     #[test]
     fn append_prompt() {
-        let builder = SystemPromptBuilder::new("/tmp")
-            .append("Extra instructions here.");
+        let builder = SystemPromptBuilder::new("/tmp").append("Extra instructions here.");
         let prompt = builder.build();
         assert!(prompt.contains("Extra instructions"));
     }

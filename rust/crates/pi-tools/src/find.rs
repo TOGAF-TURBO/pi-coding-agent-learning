@@ -26,7 +26,8 @@ impl ToolExecutor for FindTool {
     fn definition(&self) -> ToolDefinition {
         ToolDefinition {
             name: "find".to_string(),
-            description: "Find files and directories matching a pattern. Supports glob patterns.".to_string(),
+            description: "Find files and directories matching a pattern. Supports glob patterns."
+                .to_string(),
             parameters: serde_json::json!({
                 "type": "object",
                 "properties": {
@@ -50,16 +51,12 @@ impl ToolExecutor for FindTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult, PiError> {
-        let pattern = input["pattern"]
-            .as_str()
-            .ok_or_else(|| PiError::Tool {
-                tool: "find".to_string(),
-                message: "missing 'pattern' parameter".to_string(),
-            })?;
+        let pattern = input["pattern"].as_str().ok_or_else(|| PiError::Tool {
+            tool: "find".to_string(),
+            message: "missing 'pattern' parameter".to_string(),
+        })?;
 
-        let base_path = input["path"]
-            .as_str()
-            .unwrap_or(&self.cwd);
+        let base_path = input["path"].as_str().unwrap_or(&self.cwd);
 
         let max_depth = input["max_depth"].as_u64().map(|d| d as usize);
 
@@ -86,7 +83,8 @@ impl ToolExecutor for FindTool {
                 continue;
             }
             let path_str = path.display().to_string();
-            let relative = path_str.strip_prefix(base_path)
+            let relative = path_str
+                .strip_prefix(base_path)
                 .unwrap_or(&path_str)
                 .trim_start_matches('/');
             results.push(relative.to_string());
@@ -121,8 +119,8 @@ impl ToolExecutor for FindTool {
 mod tests {
     use super::*;
     use async_trait::async_trait;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[tokio::test]
     async fn find_by_name() {
@@ -131,9 +129,12 @@ mod tests {
         fs::write(dir.path().join("other.rs"), "fn main(){}").unwrap();
 
         let tool = FindTool::new(dir.path().to_string_lossy());
-        let result = tool.execute(serde_json::json!({
-            "pattern": "target.txt"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "pattern": "target.txt"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error);
         assert!(result.output.contains("target.txt"));
@@ -150,12 +151,19 @@ mod tests {
 
         let tool = FindTool::new(dir.path().to_string_lossy());
         // Use explicit file name pattern
-        let result = tool.execute(serde_json::json!({
-            "pattern": "**/main.rs"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "pattern": "**/main.rs"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error, "Error: {}", result.output);
-        assert!(result.output.contains("main.rs"), "Output: {}", result.output);
+        assert!(
+            result.output.contains("main.rs"),
+            "Output: {}",
+            result.output
+        );
     }
 
     #[test]

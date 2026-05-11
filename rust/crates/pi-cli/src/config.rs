@@ -121,8 +121,8 @@ pub fn project_skills_dir(project_dir: &Path) -> PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn default_config() {
@@ -141,7 +141,8 @@ mod tests {
         fs::write(
             piso_dir.join("settings.json"),
             r#"{"model":"glm-5.1","provider":"glm","max_tokens":8192}"#,
-        ).unwrap();
+        )
+        .unwrap();
 
         let config = load_config(Some(dir.path()));
         assert_eq!(config.model.as_deref(), Some("glm-5.1"));

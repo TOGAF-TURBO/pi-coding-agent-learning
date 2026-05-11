@@ -121,7 +121,9 @@ pub fn format_diff(old_text: &str, new_text: &str, file_path: &str) -> String {
         return String::new();
     }
 
-    let max_line = diff.lines.iter()
+    let max_line = diff
+        .lines
+        .iter()
         .filter_map(|l| l.old_line.or(l.new_line))
         .max()
         .unwrap_or(1);
@@ -131,12 +133,21 @@ pub fn format_diff(old_text: &str, new_text: &str, file_path: &str) -> String {
 
     for line in &diff.lines {
         let (prefix, old_n, new_n) = match line.line_type {
-            DiffLineType::Context => (' ', format!("{:>width$}", line.old_line.unwrap(), width = width),
-                                          format!("{:>width$}", line.new_line.unwrap(), width = width)),
-            DiffLineType::Added => ('+', " ".repeat(width),
-                                    format!("{:>width$}", line.new_line.unwrap(), width = width)),
-            DiffLineType::Removed => ('-', format!("{:>width$}", line.old_line.unwrap(), width = width),
-                                      " ".repeat(width)),
+            DiffLineType::Context => (
+                ' ',
+                format!("{:>width$}", line.old_line.unwrap(), width = width),
+                format!("{:>width$}", line.new_line.unwrap(), width = width),
+            ),
+            DiffLineType::Added => (
+                '+',
+                " ".repeat(width),
+                format!("{:>width$}", line.new_line.unwrap(), width = width),
+            ),
+            DiffLineType::Removed => (
+                '-',
+                format!("{:>width$}", line.old_line.unwrap(), width = width),
+                " ".repeat(width),
+            ),
         };
         output.push_str(&format!("{}{} {} {}\n", prefix, old_n, new_n, line.content));
     }
@@ -193,7 +204,10 @@ mod tests {
         assert_eq!(diff.added_count, 0);
         assert_eq!(diff.removed_count, 0);
         assert_eq!(diff.lines.len(), 2);
-        assert!(diff.lines.iter().all(|l| l.line_type == DiffLineType::Context));
+        assert!(diff
+            .lines
+            .iter()
+            .all(|l| l.line_type == DiffLineType::Context));
     }
 
     #[test]
@@ -201,7 +215,9 @@ mod tests {
         let diff = compute_diff("a\nb", "a\nb\nc");
         assert_eq!(diff.added_count, 1);
         assert_eq!(diff.removed_count, 0);
-        let added: Vec<&str> = diff.lines.iter()
+        let added: Vec<&str> = diff
+            .lines
+            .iter()
             .filter(|l| l.line_type == DiffLineType::Added)
             .map(|l| l.content.as_str())
             .collect();
@@ -213,7 +229,9 @@ mod tests {
         let diff = compute_diff("a\nb\nc", "a\nc");
         assert_eq!(diff.added_count, 0);
         assert_eq!(diff.removed_count, 1);
-        let removed: Vec<&str> = diff.lines.iter()
+        let removed: Vec<&str> = diff
+            .lines
+            .iter()
             .filter(|l| l.line_type == DiffLineType::Removed)
             .map(|l| l.content.as_str())
             .collect();

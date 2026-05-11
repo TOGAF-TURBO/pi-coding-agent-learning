@@ -50,31 +50,29 @@ impl TuiEngine {
             // 专用线程做 crossterm 事件读取
             let (key_tx, mut key_rx) = tokio::sync::mpsc::unbounded_channel::<Event>();
             let key_tx = key_tx;
-            std::thread::spawn(move || {
-                loop {
-                    if event::poll(Duration::from_millis(100)).unwrap_or(false) {
-                        match event::read() {
-                            Ok(CrosstermEvent::Key(key)) => {
-                                if key.kind == event::KeyEventKind::Release {
-                                    continue;
-                                }
-                                if key_tx.send(Event::Key(key)).is_err() {
-                                    break;
-                                }
+            std::thread::spawn(move || loop {
+                if event::poll(Duration::from_millis(100)).unwrap_or(false) {
+                    match event::read() {
+                        Ok(CrosstermEvent::Key(key)) => {
+                            if key.kind == event::KeyEventKind::Release {
+                                continue;
                             }
-                            Ok(CrosstermEvent::Mouse(mouse)) => {
-                                if key_tx.send(Event::Mouse(mouse)).is_err() {
-                                    break;
-                                }
+                            if key_tx.send(Event::Key(key)).is_err() {
+                                break;
                             }
-                            Ok(CrosstermEvent::Resize(w, h)) => {
-                                if key_tx.send(Event::Resize(w, h)).is_err() {
-                                    break;
-                                }
-                            }
-                            Ok(_) => {}
-                            Err(_) => break,
                         }
+                        Ok(CrosstermEvent::Mouse(mouse)) => {
+                            if key_tx.send(Event::Mouse(mouse)).is_err() {
+                                break;
+                            }
+                        }
+                        Ok(CrosstermEvent::Resize(w, h)) => {
+                            if key_tx.send(Event::Resize(w, h)).is_err() {
+                                break;
+                            }
+                        }
+                        Ok(_) => {}
+                        Err(_) => break,
                     }
                 }
             });

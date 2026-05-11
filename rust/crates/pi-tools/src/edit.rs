@@ -55,39 +55,35 @@ impl ToolExecutor for EditTool {
     }
 
     async fn execute(&self, input: Value) -> Result<ToolResult, PiError> {
-        let path = input["path"]
-            .as_str()
-            .ok_or_else(|| PiError::Tool {
-                tool: "edit".to_string(),
-                message: "missing 'path' parameter".to_string(),
-            })?;
+        let path = input["path"].as_str().ok_or_else(|| PiError::Tool {
+            tool: "edit".to_string(),
+            message: "missing 'path' parameter".to_string(),
+        })?;
 
-        let old_text = input["oldText"]
-            .as_str()
-            .ok_or_else(|| PiError::Tool {
-                tool: "edit".to_string(),
-                message: "missing 'oldText' parameter".to_string(),
-            })?;
+        let old_text = input["oldText"].as_str().ok_or_else(|| PiError::Tool {
+            tool: "edit".to_string(),
+            message: "missing 'oldText' parameter".to_string(),
+        })?;
 
-        let new_text = input["newText"]
-            .as_str()
-            .ok_or_else(|| PiError::Tool {
-                tool: "edit".to_string(),
-                message: "missing 'newText' parameter".to_string(),
-            })?;
+        let new_text = input["newText"].as_str().ok_or_else(|| PiError::Tool {
+            tool: "edit".to_string(),
+            message: "missing 'newText' parameter".to_string(),
+        })?;
 
-        let content = fs::read_to_string(path).await
-            .map_err(|e| PiError::Tool {
-                tool: "edit".to_string(),
-                message: format!("failed to read '{}': {e}", path),
-            })?;
+        let content = fs::read_to_string(path).await.map_err(|e| PiError::Tool {
+            tool: "edit".to_string(),
+            message: format!("failed to read '{}': {e}", path),
+        })?;
 
         // 检查 oldText 是否存在
         let count = content.matches(old_text).count();
         if count == 0 {
             return Err(PiError::Tool {
                 tool: "edit".to_string(),
-                message: format!("oldText not found in '{}'. The exact text must exist in the file.", path),
+                message: format!(
+                    "oldText not found in '{}'. The exact text must exist in the file.",
+                    path
+                ),
             });
         }
         if count > 1 {
@@ -110,13 +106,18 @@ impl ToolExecutor for EditTool {
             format!("\n```diff\n{}\n```", diff.trim())
         };
 
-        fs::write(path, &new_content).await.map_err(|e| PiError::Tool {
-            tool: "edit".to_string(),
-            message: format!("failed to write '{}': {e}", path),
-        })?;
+        fs::write(path, &new_content)
+            .await
+            .map_err(|e| PiError::Tool {
+                tool: "edit".to_string(),
+                message: format!("failed to write '{}': {e}", path),
+            })?;
 
         // 报告变更位置
-        let old_line = content.lines().position(|l| l.contains(old_text)).map(|l| l + 1);
+        let old_line = content
+            .lines()
+            .position(|l| l.contains(old_text))
+            .map(|l| l + 1);
 
         Ok(ToolResult {
             tool_use_id: String::new(),
@@ -142,11 +143,14 @@ mod tests {
         tokio::fs::write(&path, "hello world").await.unwrap();
 
         let tool = EditTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": path.to_string_lossy(),
-            "oldText": "world",
-            "newText": "rust"
-        })).await.unwrap();
+        let result = tool
+            .execute(serde_json::json!({
+                "path": path.to_string_lossy(),
+                "oldText": "world",
+                "newText": "rust"
+            }))
+            .await
+            .unwrap();
 
         assert!(!result.is_error);
         let content = tokio::fs::read_to_string(&path).await.unwrap();
@@ -160,11 +164,13 @@ mod tests {
         tokio::fs::write(&path, "abc abc").await.unwrap();
 
         let tool = EditTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": path.to_string_lossy(),
-            "oldText": "abc",
-            "newText": "xyz"
-        })).await;
+        let result = tool
+            .execute(serde_json::json!({
+                "path": path.to_string_lossy(),
+                "oldText": "abc",
+                "newText": "xyz"
+            }))
+            .await;
 
         assert!(result.is_err());
     }
@@ -176,11 +182,13 @@ mod tests {
         tokio::fs::write(&path, "hello").await.unwrap();
 
         let tool = EditTool::new();
-        let result = tool.execute(serde_json::json!({
-            "path": path.to_string_lossy(),
-            "oldText": "notfound",
-            "newText": "xyz"
-        })).await;
+        let result = tool
+            .execute(serde_json::json!({
+                "path": path.to_string_lossy(),
+                "oldText": "notfound",
+                "newText": "xyz"
+            }))
+            .await;
 
         assert!(result.is_err());
     }

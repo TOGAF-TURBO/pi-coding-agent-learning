@@ -9,7 +9,7 @@
 //! - 工具调用在 `functionCall` 中
 //! - SSE 不是标准格式，而是 JSON 数组分块传输
 
-use anyhow::{Result, anyhow};
+use anyhow::{anyhow, Result};
 use async_trait::async_trait;
 use reqwest::Client;
 use serde_json::{json, Value};
@@ -21,6 +21,12 @@ const GEMINI_API_URL: &str = "https://generativelanguage.googleapis.com";
 /// Google Gemini API 驱动。
 pub struct GeminiDriver {
     client: Client,
+}
+
+impl Default for GeminiDriver {
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl GeminiDriver {
@@ -49,7 +55,8 @@ impl LlmDriver for GeminiDriver {
             model
         );
 
-        let response_future = self.client
+        let response_future = self
+            .client
             .post(&url)
             .header("x-goog-api-key", &api_key)
             .header("content-type", "application/json")
@@ -89,35 +96,32 @@ impl LlmDriver for GeminiDriver {
 
                 parser.feed(&chunk);
                 while let Some(event) = parser.next_event() {
-                    match event {
-                        super::openai::SseEvent::Data(data) => {
-                            if data == "[DONE]" {
-                                // flush tool calls
-                                for (i, tc) in std::mem::take(&mut tool_calls).into_iter().enumerate() {
-                                    let input: Value = serde_json::from_str(&tc.args_json).unwrap_or(Value::Null);
-                                    yield Ok(StreamEvent::ToolCallEnd {
-                                        index: i,
-                                        id: tc.id,
-                                        name: tc.name,
-                                        input,
-                                    });
-                                }
-                                yield Ok(StreamEvent::Stop { reason: None });
-                                continue;
+                    if let super::openai::SseEvent::Data(data) = event {
+                        if data == "[DONE]" {
+                            // flush tool calls
+                            for (i, tc) in std::mem::take(&mut tool_calls).into_iter().enumerate() {
+                                let input: Value = serde_json::from_str(&tc.args_json).unwrap_or(Value::Null);
+                                yield Ok(StreamEvent::ToolCallEnd {
+                                    index: i,
+                                    id: tc.id,
+                                    name: tc.name,
+                                    input,
+                                });
                             }
+                            yield Ok(StreamEvent::Stop { reason: None });
+                            continue;
+                        }
 
-                            match serde_json::from_str::<Value>(&data) {
-                                Ok(chunk_val) => {
-                                    if let Some(events) = parse_gemini_chunk(&chunk_val, &mut tool_calls) {
-                                        for ev in events {
-                                            yield Ok(ev);
-                                        }
+                        match serde_json::from_str::<Value>(&data) {
+                            Ok(chunk_val) => {
+                                if let Some(events) = parse_gemini_chunk(&chunk_val, &mut tool_calls) {
+                                    for ev in events {
+                                        yield Ok(ev);
                                     }
                                 }
-                                Err(_) => continue,
                             }
+                            Err(_) => continue,
                         }
-                        _ => {}
                     }
                 }
             }
@@ -168,9 +172,18 @@ fn parse_gemini_chunk(
     // Usage metadata
     if let Some(usage) = chunk.get("usageMetadata") {
         events.push(StreamEvent::Usage(pi_types::message::Usage {
-            input_tokens: usage.get("promptTokenCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-            output_tokens: usage.get("candidatesTokenCount").and_then(|v| v.as_u64()).unwrap_or(0) as u32,
-            cache_read_input_tokens: usage.get("cachedContentTokenCount").and_then(|v| v.as_u64()).map(|v| v as u32),
+            input_tokens: usage
+                .get("promptTokenCount")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
+            output_tokens: usage
+                .get("candidatesTokenCount")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32,
+            cache_read_input_tokens: usage
+                .get("cachedContentTokenCount")
+                .and_then(|v| v.as_u64())
+                .map(|v| v as u32),
             ..Default::default()
         }));
     }
@@ -181,21 +194,29 @@ fn parse_gemini_chunk(
             for part in parts {
                 // Text
                 if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                    events.push(StreamEvent::TextDelta { text: text.to_string() });
+                    events.push(StreamEvent::TextDelta {
+                        text: text.to_string(),
+                    });
                 }
 
                 // Thinking
                 if let Some(thought) = part.get("thought").and_then(|v| v.as_bool()) {
                     if thought {
                         if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
-                            events.push(StreamEvent::ThinkingDelta { thinking: text.to_string() });
+                            events.push(StreamEvent::ThinkingDelta {
+                                thinking: text.to_string(),
+                            });
                         }
                     }
                 }
 
                 // Function call
                 if let Some(fc) = part.get("functionCall") {
-                    let name = fc.get("name").and_then(|v| v.as_str()).unwrap_or("").to_string();
+                    let name = fc
+                        .get("name")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("")
+                        .to_string();
                     let args = fc.get("args").cloned().unwrap_or(Value::Null);
                     let id = format!("gc_{}", tool_calls.len());
                     let args_json = serde_json::to_string(&args).unwrap_or_default();
@@ -231,8 +252,10 @@ fn build_gemini_request(req: &CompletionRequest) -> Value {
     for msg in &req.messages {
         match msg {
             pi_types::message::Message::User(u) => {
-                let parts: Vec<Value> = u.content.iter().map(|block| {
-                    match block {
+                let parts: Vec<Value> = u
+                    .content
+                    .iter()
+                    .map(|block| match block {
                         pi_types::message::ContentBlock::Text(t) => json!({"text": t.text}),
                         pi_types::message::ContentBlock::ToolResult(r) => json!({
                             "functionResponse": {
@@ -243,13 +266,15 @@ fn build_gemini_request(req: &CompletionRequest) -> Value {
                             }
                         }),
                         _ => json!({"text": "[unsupported]"}),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 contents.push(json!({"role": "user", "parts": parts}));
             }
             pi_types::message::Message::Assistant(a) => {
-                let parts: Vec<Value> = a.content.iter().map(|block| {
-                    match block {
+                let parts: Vec<Value> = a
+                    .content
+                    .iter()
+                    .map(|block| match block {
                         pi_types::message::ContentBlock::Text(t) => json!({"text": t.text}),
                         pi_types::message::ContentBlock::ToolUse(tc) => json!({
                             "functionCall": {
@@ -261,23 +286,27 @@ fn build_gemini_request(req: &CompletionRequest) -> Value {
                             json!({"thought": true, "text": t.thinking})
                         }
                         _ => json!({"text": ""}),
-                    }
-                }).collect();
+                    })
+                    .collect();
                 contents.push(json!({"role": "model", "parts": parts}));
             }
             pi_types::message::Message::ToolResult(tr) => {
-                let parts: Vec<Value> = tr.content.iter().map(|block| {
-                    if let pi_types::message::ContentBlock::ToolResult(r) = block {
-                        json!({
-                            "functionResponse": {
-                                "name": r.tool_use_id,
-                                "response": {"content": r.content}
-                            }
-                        })
-                    } else {
-                        json!({"text": "[unsupported]"})
-                    }
-                }).collect();
+                let parts: Vec<Value> = tr
+                    .content
+                    .iter()
+                    .map(|block| {
+                        if let pi_types::message::ContentBlock::ToolResult(r) = block {
+                            json!({
+                                "functionResponse": {
+                                    "name": r.tool_use_id,
+                                    "response": {"content": r.content}
+                                }
+                            })
+                        } else {
+                            json!({"text": "[unsupported]"})
+                        }
+                    })
+                    .collect();
                 contents.push(json!({"role": "user", "parts": parts}));
             }
         }
@@ -297,13 +326,17 @@ fn build_gemini_request(req: &CompletionRequest) -> Value {
 
     // Tools
     if !req.tools.is_empty() {
-        let declarations: Vec<Value> = req.tools.iter().map(|t| {
-            json!({
-                "name": t.name,
-                "description": t.description,
-                "parameters": t.parameters,
+        let declarations: Vec<Value> = req
+            .tools
+            .iter()
+            .map(|t| {
+                json!({
+                    "name": t.name,
+                    "description": t.description,
+                    "parameters": t.parameters,
+                })
             })
-        }).collect();
+            .collect();
         body["tools"] = json!([{"functionDeclarations": declarations}]);
     }
 
@@ -369,6 +402,8 @@ mod tests {
         });
         let mut tc = Vec::new();
         let events = parse_gemini_chunk(&chunk, &mut tc).unwrap();
-        assert!(events.iter().any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "hello")));
+        assert!(events
+            .iter()
+            .any(|e| matches!(e, StreamEvent::TextDelta { text } if text == "hello")));
     }
 }

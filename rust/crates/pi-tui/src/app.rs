@@ -2,7 +2,6 @@
 //!
 //! 通过 `tokio::watch` 在 agent task 和 TUI task 之间同步。
 
-
 use parking_lot::RwLock;
 
 /// Agent 运行状态。

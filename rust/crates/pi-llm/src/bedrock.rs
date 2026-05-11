@@ -23,7 +23,9 @@ pub struct BedrockDriver {
 
 impl BedrockDriver {
     pub fn new() -> Self {
-        Self { client: Client::new() }
+        Self {
+            client: Client::new(),
+        }
     }
 
     fn region() -> String {
@@ -41,18 +43,21 @@ impl BedrockDriver {
     }
 
     fn has_aws_credentials() -> bool {
-        std::env::var("AWS_ACCESS_KEY_ID").is_ok()
-            && std::env::var("AWS_SECRET_ACCESS_KEY").is_ok()
+        std::env::var("AWS_ACCESS_KEY_ID").is_ok() && std::env::var("AWS_SECRET_ACCESS_KEY").is_ok()
     }
 }
 
 impl Default for BedrockDriver {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 #[async_trait]
 impl LlmDriver for BedrockDriver {
-    fn name(&self) -> &str { "amazon-bedrock" }
+    fn name(&self) -> &str {
+        "amazon-bedrock"
+    }
 
     fn stream(&self, request: CompletionRequest) -> Result<StreamResult, anyhow::Error> {
         if !Self::has_aws_credentials() {
@@ -68,7 +73,9 @@ impl LlmDriver for BedrockDriver {
         for msg in &request.messages {
             match msg {
                 pi_types::message::Message::User(u) => {
-                    let texts: Vec<_> = u.content.iter()
+                    let texts: Vec<_> = u
+                        .content
+                        .iter()
                         .filter_map(|b| match b {
                             pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
                             _ => None,
@@ -77,7 +84,9 @@ impl LlmDriver for BedrockDriver {
                     messages.push(json!({ "role": "user", "content": texts.join("\n") }));
                 }
                 pi_types::message::Message::Assistant(a) => {
-                    let texts: Vec<_> = a.content.iter()
+                    let texts: Vec<_> = a
+                        .content
+                        .iter()
                         .filter_map(|b| match b {
                             pi_types::message::ContentBlock::Text(t) => Some(t.text.as_str()),
                             _ => None,
@@ -98,20 +107,25 @@ impl LlmDriver for BedrockDriver {
         }
 
         if !request.tools.is_empty() {
-            let tools: Vec<_> = request.tools.iter().filter_map(|t| {
-                Some(json!({
-                    "toolSpec": {
-                        "name": t.name,
-                        "description": t.description,
-                        "inputSchema": { "json": t.parameters }
-                    }
-                }))
-            }).collect();
+            let tools: Vec<_> = request
+                .tools
+                .iter()
+                .filter_map(|t| {
+                    Some(json!({
+                        "toolSpec": {
+                            "name": t.name,
+                            "description": t.description,
+                            "inputSchema": { "json": t.parameters }
+                        }
+                    }))
+                })
+                .collect();
             body["toolConfig"] = json!({ "tools": tools });
         }
 
         let api_key = request.api_key.clone();
-        let response_future = self.client
+        let response_future = self
+            .client
             .post(&url)
             .header("Authorization", format!("Bearer {api_key}"))
             .header("Content-Type", "application/json")
@@ -237,10 +251,7 @@ mod tests {
 
     #[test]
     fn build_url_encodes_model() {
-        let url = BedrockDriver::build_url(
-            "anthropic.claude-sonnet-4-20250514",
-            "us-east-1",
-        );
+        let url = BedrockDriver::build_url("anthropic.claude-sonnet-4-20250514", "us-east-1");
         assert!(url.contains("bedrock-runtime.us-east-1.amazonaws.com"));
         assert!(url.contains("anthropic.claude-sonnet-4-20250514"));
         assert!(url.contains("converse-stream"));

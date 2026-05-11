@@ -9,11 +9,11 @@
 //!
 //! 本 crate 零依赖外部 IO，只定义数据结构和 trait。
 
-pub mod message;
-pub mod tool;
-pub mod event;
-pub mod session;
 pub mod config;
-pub mod skill;
-pub mod model;
 pub mod error;
+pub mod event;
+pub mod message;
+pub mod model;
+pub mod session;
+pub mod skill;
+pub mod tool;

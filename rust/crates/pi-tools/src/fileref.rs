@@ -17,7 +17,8 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
     let mut cleaned = message.to_string();
 
     // 查找所有 @xxx 模式
-    let re = regex::Regex::new(r"@(\.{0,2}/[^\s,;)]+|@[^\s,;)]+|[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)").unwrap();
+    let re = regex::Regex::new(r"@(\.{0,2}/[^\s,;)]+|@[^\s,;)]+|[a-zA-Z0-9_./-]+\.[a-zA-Z0-9]+)")
+        .unwrap();
 
     for cap in re.captures_iter(message) {
         let full = &cap[0];
@@ -26,7 +27,8 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
         // 跳过明显不是文件的模式
         if file_path.starts_with('@') // @@ 转义
             || file_path.contains("://") // URL
-            || file_path.starts_with('{') // JSON
+            || file_path.starts_with('{')
+        // JSON
         {
             continue;
         }
@@ -39,8 +41,7 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
 
         if resolved.exists() && resolved.is_file() {
             if let Ok(content) = std::fs::read_to_string(&resolved) {
-                let rel = pathdiff::diff_paths(&resolved, cwd)
-                    .unwrap_or_else(|| resolved.clone());
+                let rel = pathdiff::diff_paths(&resolved, cwd).unwrap_or_else(|| resolved.clone());
                 let display = rel.to_string_lossy();
 
                 // 检测是否为二进制文件
@@ -70,7 +71,10 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
     } else {
         let mut parts = Vec::new();
         for f in &refs {
-            parts.push(format!("--- {} ---\n{}\n--- end of {} ---", f.path, f.content, f.path));
+            parts.push(format!(
+                "--- {} ---\n{}\n--- end of {} ---",
+                f.path, f.content, f.path
+            ));
         }
         let file_context = parts.join("\n\n");
         let user_text = cleaned.trim();
@@ -102,18 +106,15 @@ pub struct FileRef {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use tempfile::TempDir;
     use std::fs;
+    use tempfile::TempDir;
 
     #[test]
     fn resolve_existing_file() {
         let dir = TempDir::new().unwrap();
         fs::write(dir.path().join("hello.txt"), "hello world").unwrap();
 
-        let (msg, refs) = resolve_file_refs(
-            "Please review @hello.txt and fix bugs",
-            dir.path(),
-        );
+        let (msg, refs) = resolve_file_refs("Please review @hello.txt and fix bugs", dir.path());
 
         assert!(msg.contains("hello world"));
         assert!(msg.contains("Please review"));
@@ -144,10 +145,7 @@ mod tests {
         fs::create_dir_all(&sub).unwrap();
         fs::write(sub.join("main.rs"), "fn main() {}").unwrap();
 
-        let (msg, refs) = resolve_file_refs(
-            "Check @src/main.rs",
-            dir.path(),
-        );
+        let (msg, refs) = resolve_file_refs("Check @src/main.rs", dir.path());
 
         assert_eq!(refs.len(), 1);
         assert!(refs[0].path.ends_with("main.rs"));
@@ -161,10 +159,7 @@ mod tests {
         fs::write(&file, "content").unwrap();
 
         let abs = file.to_string_lossy().to_string();
-        let (msg, refs) = resolve_file_refs(
-            &format!("@{}", abs),
-            Path::new("/tmp"),
-        );
+        let (msg, refs) = resolve_file_refs(&format!("@{}", abs), Path::new("/tmp"));
 
         assert_eq!(refs.len(), 1);
         assert!(msg.contains("content"));

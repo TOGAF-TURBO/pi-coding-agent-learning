@@ -181,7 +181,15 @@ mod tests {
 
     #[test]
     fn parse_provider_and_model() {
-        let cli = Cli::try_parse_from(["piso", "--provider", "glm", "--model", "glm-5.1", "-p", "test"]);
+        let cli = Cli::try_parse_from([
+            "piso",
+            "--provider",
+            "glm",
+            "--model",
+            "glm-5.1",
+            "-p",
+            "test",
+        ]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
         assert_eq!(cli.provider.as_deref(), Some("glm"));
@@ -191,7 +199,13 @@ mod tests {
 
     #[test]
     fn parse_flags() {
-        let cli = Cli::try_parse_from(["piso", "--no-tools", "--no-session", "--offline", "--verbose"]);
+        let cli = Cli::try_parse_from([
+            "piso",
+            "--no-tools",
+            "--no-session",
+            "--offline",
+            "--verbose",
+        ]);
         assert!(cli.is_ok());
         let cli = cli.unwrap();
         assert!(cli.no_tools);

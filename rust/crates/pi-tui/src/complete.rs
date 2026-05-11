@@ -45,7 +45,8 @@ pub fn complete(input: &str, cursor: usize, cwd: &Path) -> Option<(Vec<Completio
     let before_cursor = &input[..cursor.min(input.len())];
 
     // 查找触发点
-    let trigger_start = before_cursor.rfind(|c: char| c.is_whitespace() || c == '"' || c == '\'')
+    let trigger_start = before_cursor
+        .rfind(|c: char| c.is_whitespace() || c == '"' || c == '\'')
         .map(|i| i + 1)
         .unwrap_or(0);
 
@@ -70,7 +71,10 @@ pub fn complete(input: &str, cursor: usize, cwd: &Path) -> Option<(Vec<Completio
 }
 
 /// Slash 命令补全。
-fn complete_slash_command(fragment: &str, trigger_start: usize) -> Option<(Vec<Completion>, usize)> {
+fn complete_slash_command(
+    fragment: &str,
+    trigger_start: usize,
+) -> Option<(Vec<Completion>, usize)> {
     let mut candidates = Vec::new();
     for (cmd, desc) in SLASH_COMMANDS {
         if cmd.starts_with(fragment) {
@@ -89,7 +93,11 @@ fn complete_slash_command(fragment: &str, trigger_start: usize) -> Option<(Vec<C
 }
 
 /// @file 补全 — 以 @ 开头时补全文件路径。
-fn complete_at_file(fragment: &str, trigger_start: usize, cwd: &Path) -> Option<(Vec<Completion>, usize)> {
+fn complete_at_file(
+    fragment: &str,
+    trigger_start: usize,
+    cwd: &Path,
+) -> Option<(Vec<Completion>, usize)> {
     let path_fragment = &fragment[1..]; // 去掉 @
 
     // 至少需要一个字符或有路径分隔符
@@ -105,7 +113,11 @@ fn complete_at_file(fragment: &str, trigger_start: usize, cwd: &Path) -> Option<
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             candidates.push(Completion {
                 text: format!("@{}", name),
-                display: if is_dir { format!("{}/", name) } else { name.clone() },
+                display: if is_dir {
+                    format!("{}/", name)
+                } else {
+                    name.clone()
+                },
                 is_dir,
             });
         }
@@ -124,18 +136,29 @@ fn complete_at_file(fragment: &str, trigger_start: usize, cwd: &Path) -> Option<
             if name.starts_with('.') && !path_fragment.starts_with('.') {
                 continue;
             }
-            if !name.to_lowercase().starts_with(&path_fragment.to_lowercase()) {
+            if !name
+                .to_lowercase()
+                .starts_with(&path_fragment.to_lowercase())
+            {
                 continue;
             }
             let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
             candidates.push(Completion {
                 text: format!("@{}", name),
-                display: if is_dir { format!("{}/", name) } else { name.clone() },
+                display: if is_dir {
+                    format!("{}/", name)
+                } else {
+                    name.clone()
+                },
                 is_dir,
             });
         }
         candidates.sort_by(|a, b| a.display.cmp(&b.display));
-        return if candidates.is_empty() { None } else { Some((candidates, trigger_start)) };
+        return if candidates.is_empty() {
+            None
+        } else {
+            Some((candidates, trigger_start))
+        };
     }
 
     // 展开路径
@@ -146,7 +169,8 @@ fn complete_at_file(fragment: &str, trigger_start: usize, cwd: &Path) -> Option<
         (expanded, String::new())
     } else {
         let dir = expanded.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let prefix = expanded.file_name()
+        let prefix = expanded
+            .file_name()
             .map(|f| f.to_string_lossy().to_string())
             .unwrap_or_default();
         (dir, prefix)
@@ -165,18 +189,28 @@ fn complete_at_file(fragment: &str, trigger_start: usize, cwd: &Path) -> Option<
         }
 
         let is_dir = entry.file_type().map(|t| t.is_dir()).unwrap_or(false);
-        let display = if is_dir { format!("{}/", name) } else { name.clone() };
+        let display = if is_dir {
+            format!("{}/", name)
+        } else {
+            name.clone()
+        };
 
         // 生成 @ 路径
         let full = dir.join(&name);
         let at_path = if path_fragment.starts_with('~') {
             let home = dir_home();
-            format!("@~/{}", full.strip_prefix(&home).unwrap_or(&full).to_string_lossy())
+            format!(
+                "@~/{}",
+                full.strip_prefix(&home).unwrap_or(&full).to_string_lossy()
+            )
         } else if path_fragment.starts_with('/') {
             format!("@{}", full.to_string_lossy())
         } else {
             let rel = pathdiff(&full, cwd);
-            format!("@{}", rel.unwrap_or_else(|| full.to_string_lossy().to_string()))
+            format!(
+                "@{}",
+                rel.unwrap_or_else(|| full.to_string_lossy().to_string())
+            )
         };
 
         candidates.push(Completion {
@@ -194,7 +228,11 @@ fn complete_at_file(fragment: &str, trigger_start: usize, cwd: &Path) -> Option<
 }
 
 /// 文件路径补全。
-fn complete_file_path(fragment: &str, trigger_start: usize, cwd: &Path) -> Option<(Vec<Completion>, usize)> {
+fn complete_file_path(
+    fragment: &str,
+    trigger_start: usize,
+    cwd: &Path,
+) -> Option<(Vec<Completion>, usize)> {
     let has_path_sep = fragment.contains('/') || fragment.starts_with('~');
     if !has_path_sep && !fragment.starts_with('.') {
         return None;
@@ -207,7 +245,8 @@ fn complete_file_path(fragment: &str, trigger_start: usize, cwd: &Path) -> Optio
         (expanded.clone(), String::new())
     } else {
         let dir = expanded.parent().unwrap_or(Path::new(".")).to_path_buf();
-        let prefix = expanded.file_name()
+        let prefix = expanded
+            .file_name()
             .map(|f| f.to_string_lossy().to_string())
             .unwrap_or_default();
         (dir, prefix)
@@ -229,7 +268,13 @@ fn complete_file_path(fragment: &str, trigger_start: usize, cwd: &Path) -> Optio
         let full_path = dir.join(&name);
 
         let completion_text = if fragment.starts_with('~') {
-            format!("~/{}", full_path.strip_prefix(dir_home()).unwrap_or(&full_path).to_string_lossy())
+            format!(
+                "~/{}",
+                full_path
+                    .strip_prefix(dir_home())
+                    .unwrap_or(&full_path)
+                    .to_string_lossy()
+            )
         } else if fragment.starts_with('/') {
             full_path.to_string_lossy().to_string()
         } else {
@@ -237,10 +282,18 @@ fn complete_file_path(fragment: &str, trigger_start: usize, cwd: &Path) -> Optio
             rel.unwrap_or_else(|| full_path.to_string_lossy().to_string())
         };
 
-        let display = if is_dir { format!("{}/", name) } else { name.clone() };
+        let display = if is_dir {
+            format!("{}/", name)
+        } else {
+            name.clone()
+        };
 
         candidates.push(Completion {
-            text: if is_dir { format!("{}/", completion_text.trim_end_matches('/')) } else { completion_text },
+            text: if is_dir {
+                format!("{}/", completion_text.trim_end_matches('/'))
+            } else {
+                completion_text
+            },
             display,
             is_dir,
         });
@@ -270,7 +323,9 @@ fn shellexpand(path: &str, cwd: &Path) -> PathBuf {
     for comp in raw.components() {
         match comp {
             std::path::Component::CurDir => {}
-            std::path::Component::ParentDir => { normalized.pop(); }
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
             other => normalized.push(other),
         }
     }
@@ -289,7 +344,9 @@ fn pathdiff(path: &Path, base: &Path) -> Option<String> {
     if path_str.starts_with(base_str.as_ref()) {
         let rel = &path_str[base_str.len()..];
         let rel = rel.strip_prefix('/').unwrap_or(rel);
-        if rel.is_empty() { return None; }
+        if rel.is_empty() {
+            return None;
+        }
         Some(rel.to_string())
     } else {
         None

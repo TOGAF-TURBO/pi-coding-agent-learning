@@ -63,7 +63,9 @@ fn load_skills_from_dir(
     skills: &mut Vec<Skill>,
     seen_names: &mut std::collections::HashSet<String>,
 ) {
-    let Ok(entries) = std::fs::read_dir(dir) else { return };
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
 
     for entry in entries.flatten() {
         let path = entry.path();
@@ -76,7 +78,11 @@ fn load_skills_from_dir(
             continue;
         }
 
-        let dir_name = path.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let dir_name = path
+            .file_name()
+            .unwrap_or_default()
+            .to_string_lossy()
+            .to_string();
 
         match load_skill(&skill_md, &dir_name, source) {
             Ok(skill) => {
@@ -99,12 +105,14 @@ fn load_skill(path: &Path, fallback_name: &str, source: &str) -> Result<Skill> {
     // 解析 frontmatter（--- 包围的 YAML）
     let (frontmatter, body) = parse_frontmatter(&content);
 
-    let name = frontmatter.get("name")
+    let name = frontmatter
+        .get("name")
         .and_then(|v| v.as_str())
         .unwrap_or(fallback_name)
         .to_string();
 
-    let description = frontmatter.get("description")
+    let description = frontmatter
+        .get("description")
         .and_then(|v| v.as_str())
         .unwrap_or_else(|| {
             // 从 body 第一行提取描述
@@ -145,7 +153,11 @@ fn parse_frontmatter(content: &str) -> (serde_json::Value, &str) {
             }
             if let Some((key, value)) = line.split_once(':') {
                 let key = key.trim().to_string();
-                let value = value.trim().trim_matches('"').trim_matches('\'').to_string();
+                let value = value
+                    .trim()
+                    .trim_matches('"')
+                    .trim_matches('\'')
+                    .to_string();
                 map.insert(key, serde_json::Value::String(value));
             }
         }
@@ -166,8 +178,10 @@ pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
 
     let mut lines = vec![
         "The following skills provide specialized instructions for specific tasks.".to_string(),
-        "Use the read tool to load a skill's file when the task matches its description.".to_string(),
-        "When a skill file references a relative path, resolve it against the skill directory.".to_string(),
+        "Use the read tool to load a skill's file when the task matches its description."
+            .to_string(),
+        "When a skill file references a relative path, resolve it against the skill directory."
+            .to_string(),
         String::new(),
         "<available_skills>".to_string(),
     ];
@@ -175,9 +189,15 @@ pub fn format_skills_for_prompt(skills: &[Skill]) -> String {
     for skill in skills {
         lines.push("  <skill>".to_string());
         lines.push(format!("    <name>{}</name>", escape_xml(&skill.name)));
-        lines.push(format!("    <description>{}</description>", escape_xml(&skill.description)));
+        lines.push(format!(
+            "    <description>{}</description>",
+            escape_xml(&skill.description)
+        ));
         let path_str = skill.file_path.display().to_string();
-        lines.push(format!("    <location>{}</location>", escape_xml(&path_str)));
+        lines.push(format!(
+            "    <location>{}</location>",
+            escape_xml(&path_str)
+        ));
         lines.push("  </skill>".to_string());
     }
 
@@ -265,7 +285,12 @@ mod tests {
         let mut skills = Vec::new();
         let mut seen = std::collections::HashSet::new();
         load_skills_from_dir(&dir.path().join("global"), "global", &mut skills, &mut seen);
-        load_skills_from_dir(&dir.path().join("project"), "project", &mut skills, &mut seen);
+        load_skills_from_dir(
+            &dir.path().join("project"),
+            "project",
+            &mut skills,
+            &mut seen,
+        );
 
         // 同名只保留第一个
         assert_eq!(skills.len(), 1);

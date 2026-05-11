@@ -17,7 +17,7 @@ use serde::{Deserialize, Serialize};
 pub struct SessionHeader {
     #[serde(rename = "type")]
     pub entry_type: String, // always "session"
-    pub version: u32,       // always 3
+    pub version: u32, // always 3
     pub id: String,
     pub timestamp: String,
     pub cwd: String,
