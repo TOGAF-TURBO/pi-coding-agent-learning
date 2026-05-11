@@ -1,6 +1,8 @@
 //! RPC 模式 — JSON-over-stdio 协议，供 IDE 插件和外部工具控制 piso。
 //!
 //! 对应 `packages/coding-agent/src/modes/rpc/rpc-types.ts`。
+
+#![allow(unused_assignments)]
 //!
 //! 协议：
 //! - stdin: 每行一个 JSON 命令
@@ -13,7 +15,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::sync::mpsc;
@@ -131,6 +133,7 @@ pub struct RpcMessage {
 enum InternalCommand {
     Rpc(RpcCommand),
     /// Agent turn 完成。
+    #[allow(dead_code)]
     AgentDone,
 }
 
@@ -160,8 +163,9 @@ pub async fn run_rpc(
     let mut stdout_writer = tokio::io::BufWriter::new(stdout);
 
     // Agent state
+    #[allow(unused_assignments)]
     let mut agent_running = false;
-    let session_id = session.id().to_string();
+    let _session_id = session.id().to_string();
 
     // stdin reader task
     let stdin_cmd_tx = cmd_tx.clone();
@@ -191,10 +195,9 @@ pub async fn run_rpc(
                                 id: None,
                                 message: format!("Invalid command: {e}"),
                             };
-                            let mut stdout = tokio::io::stdout();
+                            let _stdout = tokio::io::stdout();
                             let _ = serde_json::to_string(&err)
                                 .map(|s| {
-                                    use tokio::io::AsyncWriteExt;
                                     let _ = std::io::Write::write_all(
                                         &mut std::io::stdout(),
                                         format!("{}\n", s).as_bytes(),
@@ -209,7 +212,7 @@ pub async fn run_rpc(
     });
 
     // 事件循环
-    'event_loop: loop {
+    loop {
         let cmd = match cmd_rx.recv().await {
             Some(c) => c,
             None => break,
@@ -226,7 +229,6 @@ pub async fn run_rpc(
                             }).await?;
                             continue;
                         }
-
                         agent_running = true;
                         abort_flag.store(false, Ordering::SeqCst);
                         emit(&mut stdout_writer, &RpcEvent::StateChange {
@@ -237,7 +239,7 @@ pub async fn run_rpc(
                         let driver = make_driver(&api_type);
 
                         // 创建 sink — 直接写 stdout（同步，因为 sink 回调不能是 async）
-                        let sink_id = id.clone();
+                        let _sink_id = id.clone();
                         let sink: Arc<StreamSink> = Arc::new(Box::new(move |event| {
                             let rpc_event = match event {
                                 StreamEvent::TextDelta { text } => Some(RpcEvent::TextDelta { text }),
