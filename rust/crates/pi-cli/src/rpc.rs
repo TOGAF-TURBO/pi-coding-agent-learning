@@ -148,7 +148,8 @@ pub async fn run_rpc(
 ) -> Result<()> {
     let cwd_str = cwd.to_string_lossy().to_string();
     let tools = make_tools(&cwd);
-    let session_dir = cwd.join(".piso").join("sessions");
+    let cfg = crate::config::load_config(Some(&cwd));
+    let session_dir = crate::config::session_dir_for_cwd(&cfg, &cwd);
 
     // 创建 session
     let mgr = SessionManager::new(&session_dir);

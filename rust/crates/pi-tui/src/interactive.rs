@@ -56,6 +56,8 @@ pub struct InteractiveConfig {
     pub base_url: Option<String>,
     pub cwd: PathBuf,
     pub system_prompt: String,
+    /// Session 存储目录（由调用方计算，如 ~/.piso/sessions/--cwd--/）。
+    pub session_dir: PathBuf,
     /// 预加载的 session（可能包含历史消息）。
     pub session: Option<JsonlSession>,
 }
@@ -75,7 +77,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let state = Arc::new(AppState::new(&cfg.model, &cfg.provider));
 
     let tools = make_tools(&cfg.cwd);
-    let session_dir = cfg.cwd.join(".piso").join("sessions");
+    let session_dir = cfg.session_dir.clone();
 
     let ctx = Arc::new(AgentContext {
         model: cfg.model.clone(),

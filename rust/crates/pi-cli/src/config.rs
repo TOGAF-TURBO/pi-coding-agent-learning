@@ -8,9 +8,9 @@
 //! ├── settings.json       # 全局配置
 //! ├── auth.json           # API key 存储
 //! ├── models.json         # Provider + model 定义
-//! ├── sessions/           # 会话存储
-//! │   └── <session-id>/
-//! │       └── session.jsonl
+//! ├── sessions/           # 会话存储（集中，不污染项目）
+//! │   └── --home-user-project--/   # CWD 编码为安全目录名
+//! │       └── <session-id>.jsonl
 //! └── skills/             # 全局技能
 //!     └── <skill-name>/
 //!         └── SKILL.md
@@ -90,12 +90,21 @@ pub fn config_dir() -> Option<PathBuf> {
     dirs::home_dir().map(|h| h.join(CONFIG_DIR_NAME))
 }
 
-/// 获取会话目录路径：`~/.piso/sessions/`
-pub fn session_dir(config: &Config) -> Option<PathBuf> {
+/// 获取会话目录路径：`~/.piso/sessions/--cwd-safe-path--/`
+///
+/// 与 TS 版 pi 兼容的编码方式：cwd 去前导 `/`，路径分隔符替换为 `-`。
+pub fn session_dir_for_cwd(config: &Config, cwd: &Path) -> PathBuf {
     if let Some(dir) = &config.session_dir {
-        Some(PathBuf::from(dir))
+        PathBuf::from(dir)
     } else {
-        config_dir().map(|d| d.join("sessions"))
+        let safe = cwd
+            .to_string_lossy()
+            .trim_start_matches('/')
+            .replace(['/', '\\', ':'], "-");
+        let safe_dir = format!("--{safe}--");
+        config_dir()
+            .map(|d| d.join("sessions").join(safe_dir))
+            .unwrap_or_else(|| PathBuf::from(".piso/sessions"))
     }
 }
 

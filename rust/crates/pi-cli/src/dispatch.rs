@@ -241,8 +241,7 @@ async fn resolve_session(
     cwd: &std::path::Path,
     cwd_str: &str,
 ) -> Result<JsonlSession> {
-    let session_dir = config::session_dir(cfg)
-        .unwrap_or_else(|| cwd.join(".pi").join("sessions"));
+    let session_dir = config::session_dir_for_cwd(cfg, cwd);
 
     if cli.no_session {
         let tmp = tempfile::tempdir()?;
@@ -368,6 +367,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
 
     // 解析会话（--continue / --session / --resume / 新建）
     let session = resolve_session(&cli, &cfg, &cwd, &cwd_str).await?;
+    let session_dir = config::session_dir_for_cwd(&cfg, &cwd);
 
     let tui_cfg = pi_tui::InteractiveConfig {
         model,
@@ -376,6 +376,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         api_type,
         base_url: effective_base_url,
         cwd,
+        session_dir,
         system_prompt: prompt_builder.build(),
         session: Some(session),
     };
@@ -479,8 +480,7 @@ async fn run_list_models(_cli: Cli) -> Result<()> {
 async fn run_list_sessions() -> Result<()> {
     let cwd = env::current_dir()?;
     let cfg = config::load_config(Some(&cwd));
-    let session_dir = config::session_dir(&cfg)
-        .unwrap_or_else(|| cwd.join(".pi").join("sessions"));
+    let session_dir = config::session_dir_for_cwd(&cfg, &cwd);
 
     let mgr = SessionManager::new(&session_dir);
     let sessions = mgr.list().await?;
