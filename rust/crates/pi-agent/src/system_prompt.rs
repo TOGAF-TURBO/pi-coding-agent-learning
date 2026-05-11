@@ -50,6 +50,15 @@ impl SystemPromptBuilder {
         self
     }
 
+    /// 加载项目级自定义提示（从 .piso/system.md）。
+    pub fn with_project_prompt(mut self, cwd: &str) -> Self {
+        let system_md = std::path::Path::new(cwd).join(".piso").join("system.md");
+        if let Ok(content) = std::fs::read_to_string(&system_md) {
+            self.append_prompts.push(content);
+        }
+        self
+    }
+
     /// 构建最终系统提示。
     pub fn build(&self) -> String {
         let mut parts = Vec::new();

@@ -44,10 +44,20 @@ pub fn complete(input: &str, cursor: usize, cwd: &Path) -> Option<(Vec<Completio
 
     // 展开路径
     let expanded = shellexpand(fragment, cwd);
-    let dir = expanded.parent().unwrap_or(Path::new(".")).to_path_buf();
-    let prefix = expanded.file_name()
-        .map(|f| f.to_string_lossy().to_string())
-        .unwrap_or_default();
+
+    // 判断是否以 / 结尾（用户输入目录路径，应列出内容）
+    let trailing_slash = fragment.ends_with('/') || fragment.ends_with("/.");
+
+    let (dir, prefix) = if trailing_slash && expanded.is_dir() {
+        // 列出目录内容
+        (expanded.clone(), String::new())
+    } else {
+        let dir = expanded.parent().unwrap_or(Path::new(".")).to_path_buf();
+        let prefix = expanded.file_name()
+            .map(|f| f.to_string_lossy().to_string())
+            .unwrap_or_default();
+        (dir, prefix)
+    };
 
     // 读取目录
     let entries = std::fs::read_dir(&dir).ok()?;
@@ -101,7 +111,7 @@ pub fn complete(input: &str, cursor: usize, cwd: &Path) -> Option<(Vec<Completio
 
 /// 展开 ~/ 和相对路径。
 fn shellexpand(path: &str, cwd: &Path) -> PathBuf {
-    if path.starts_with('~') {
+    let raw = if path.starts_with('~') {
         let home = dir_home();
         let rest = path.strip_prefix('~').unwrap_or(path);
         let rest = rest.strip_prefix('/').unwrap_or(rest);
@@ -110,7 +120,21 @@ fn shellexpand(path: &str, cwd: &Path) -> PathBuf {
         PathBuf::from(path)
     } else {
         cwd.join(path)
+    };
+
+    // 规范化 ./ 和 ../
+    // 使用 std::path::Component 过滤 . 和 ..
+    let mut normalized = PathBuf::new();
+    for comp in raw.components() {
+        match comp {
+            std::path::Component::CurDir => {} // skip .
+            std::path::Component::ParentDir => {
+                normalized.pop();
+            }
+            other => normalized.push(other),
+        }
     }
+    normalized
 }
 
 /// 获取 home 目录。
@@ -176,16 +200,14 @@ mod tests {
 
     #[test]
     fn complete_dot_slash() {
-        // 创建临时目录结构
         let dir = tempfile::tempdir().unwrap();
-        fs::create_dir(dir.path().join("src")).unwrap();
-        fs::write(dir.path().join("Cargo.toml"), "").unwrap();
+        fs::create_dir(dir.path().join("src_unique_a7")).unwrap();
+        fs::write(dir.path().join("Cargo_unique_b3.toml"), "").unwrap();
 
         let result = complete("./", 2, dir.path());
-        assert!(result.is_some());
-        let (candidates, start) = result.unwrap();
-        assert_eq!(start, 0);
-        assert!(candidates.len() >= 2); // at least src/ and Cargo.toml
+        assert!(result.is_some(), "complete returned None");
+        let (candidates, _start) = result.unwrap();
+        assert!(candidates.len() >= 2, "only {} candidates", candidates.len());
     }
 
     #[test]

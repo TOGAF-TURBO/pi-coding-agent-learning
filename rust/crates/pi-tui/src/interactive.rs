@@ -634,8 +634,28 @@ async fn handle_slash_command(
             let f = state.footer.read();
             let in_t = f.input_tokens;
             let out_t = f.output_tokens;
+            let model = f.model.clone();
             drop(f);
-            state.push_system(&format!("Token usage: {} input, {} output, {} total", in_t, out_t, in_t + out_t));
+            let cost = pi_agent::cost::estimate_cost(&model, in_t as u64, out_t as u64);
+            let cost_str = pi_agent::cost::format_cost(cost);
+            state.push_system(&format!("Token usage: {} input, {} output, {} total | Estimated cost: {}", in_t, out_t, in_t + out_t, cost_str));
+        }
+        SlashCommand::Cost => {
+            let f = state.footer.read();
+            let in_t = f.input_tokens;
+            let out_t = f.output_tokens;
+            let model = f.model.clone();
+            drop(f);
+            let pricing = pi_agent::cost::get_pricing(&model);
+            let cost = pi_agent::cost::estimate_cost(&model, in_t as u64, out_t as u64);
+            let cost_str = pi_agent::cost::format_cost(cost);
+            state.push_system(&format!(
+                "Cost estimate for {}:\n  Input:  {} tokens @ ${}/M = {}\n  Output: {} tokens @ ${}/M = {}\n  Total: {}",
+                model,
+                in_t, pricing.input_per_m, pi_agent::cost::format_cost((in_t as f64 / 1_000_000.0) * pricing.input_per_m),
+                out_t, pricing.output_per_m, pi_agent::cost::format_cost((out_t as f64 / 1_000_000.0) * pricing.output_per_m),
+                cost_str,
+            ));
         }
         SlashCommand::Sessions => {
             let mgr = SessionManager::new(session_dir);

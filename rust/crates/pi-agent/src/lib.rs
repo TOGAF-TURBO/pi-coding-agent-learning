@@ -4,6 +4,7 @@
 
 pub mod compaction;
 pub mod context;
+pub mod cost;
 pub mod loop_engine;
 pub mod session;
 pub mod skills;

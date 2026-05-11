@@ -249,6 +249,24 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         String::new()
     };
 
+    // 实时计时（thinking/streaming 时显示 elapsed）
+    let elapsed = if let Some(start) = *state.turn_start.read() {
+        let secs = start.elapsed().as_secs();
+        if secs >= 60 {
+            format!(" | {}m{}s", secs / 60, secs % 60)
+        } else {
+            format!(" | {}s", secs)
+        }
+    } else if footer.duration_secs > 0 {
+        if footer.duration_secs >= 60 {
+            format!(" | {}m{}s", footer.duration_secs / 60, footer.duration_secs % 60)
+        } else {
+            format!(" | {}s", footer.duration_secs)
+        }
+    } else {
+        String::new()
+    };
+
     let line = Line::from(vec![
         Span::styled(
             format!(" {}", state_text),
@@ -256,6 +274,10 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         ),
         Span::styled(
             tokens,
+            Style::default().fg(Color::DarkGray),
+        ),
+        Span::styled(
+            elapsed,
             Style::default().fg(Color::DarkGray),
         ),
     ]);

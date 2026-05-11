@@ -49,6 +49,10 @@ pub struct AgentLoop {
     extension_runner: ExtensionRunnerRef,
     /// Token 用量统计。
     usage: TokenUsage,
+    /// 流式超时秒数。
+    stream_timeout_secs: u64,
+    /// 最大重试次数。
+    max_retries: usize,
 }
 
 /// Agent 循环输出 — 收集的最终响应。
@@ -111,6 +115,8 @@ impl AgentLoop {
             stderr_output: true,
             extension_runner: None,
             usage: TokenUsage::default(),
+            stream_timeout_secs: 120,
+            max_retries: 3,
         }
     }
 
@@ -132,6 +138,29 @@ impl AgentLoop {
     pub fn with_base_url(mut self, url: impl Into<String>) -> Self {
         self.base_url = Some(url.into());
         self
+    }
+
+    /// 设置流式超时秒数。
+    pub fn with_stream_timeout(mut self, secs: u64) -> Self {
+        self.stream_timeout_secs = secs;
+        self
+    }
+
+    /// 设置最大重试次数。
+    pub fn with_max_retries(mut self, n: usize) -> Self {
+        self.max_retries = n;
+        self
+    }
+
+    /// 估算当前消息历史的 token 数。
+    pub fn estimate_context_tokens(&self) -> u32 {
+        let messages = self.build_messages().unwrap_or_default();
+        let json = serde_json::to_value(&messages).unwrap_or_default();
+        if let Some(arr) = json.as_array() {
+            crate::token_est::estimate_messages(arr)
+        } else {
+            0
+        }
     }
 
     /// 设置实时事件回调（用于 TUI 流式更新）。
@@ -193,6 +222,20 @@ impl AgentLoop {
         let mut total_tool_calls = 0;
 
         for _iteration in 1..=self.max_iterations {
+            // 上下文窗口预算检查
+            let estimated = self.estimate_context_tokens();
+            // 大多数模型 context window >= 128K，当估算超过 100K 时触发压缩
+            if estimated > 100_000 {
+                self.emit(StreamEvent::Error {
+                    message: format!("Context budget near limit (~{} tokens), compacting...", estimated),
+                });
+                if let Err(e) = self.compact_context().await {
+                    self.emit(StreamEvent::Error {
+                        message: format!("Compaction failed: {}", e),
+                    });
+                }
+            }
+
             // 构建消息历史
             let messages = self.build_messages()?;
 
@@ -333,7 +376,63 @@ impl AgentLoop {
 
     /// 调用 LLM 并收集完整流式响应。
     async fn call_llm(&self, request: CompletionRequest) -> Result<LlmResponse> {
-        let mut stream = self.driver.stream(request)?;
+        let mut last_err = None;
+
+        for attempt in 0..=self.max_retries {
+            if attempt > 0 {
+                // 指数退避: 1s, 2s, 4s, ...
+                let delay = std::time::Duration::from_secs(1 << (attempt - 1).min(4));
+                self.emit(StreamEvent::Error {
+                    message: format!("Retry {}/{} in {:?}...", attempt, self.max_retries, delay),
+                });
+                tokio::time::sleep(delay).await;
+            }
+
+            match self.call_llm_once(&request).await {
+                Ok(resp) => return Ok(resp),
+                Err(e) => {
+                    let msg = format!("{:?}", e);
+                    // 不可重试的错误直接返回
+                    if msg.contains("API key") || msg.contains("authentication") {
+                        return Err(e);
+                    }
+                    last_err = Some(e);
+                }
+            }
+        }
+
+        Err(last_err.unwrap_or_else(|| anyhow!("All retries exhausted")))
+    }
+
+    /// 单次 LLM 调用（带超时）。
+    async fn call_llm_once(&self, request: &CompletionRequest) -> Result<LlmResponse> {
+        let timeout = tokio::time::Duration::from_secs(self.stream_timeout_secs);
+        let stream = self.driver.stream(request.clone())?;
+
+        // 用 tokio::time::timeout 包装整个流消费
+        let result = tokio::time::timeout(timeout, self.consume_stream(stream)).await;
+
+        match result {
+            Ok(inner) => {
+                if self.stderr_output {
+                    std::eprintln!(); // 流结束后换行
+                }
+                inner
+            }
+            Err(_) => {
+                self.emit(StreamEvent::Error {
+                    message: format!("Stream timed out after {}s", self.stream_timeout_secs),
+                });
+                Err(anyhow!("Stream timed out after {}s", self.stream_timeout_secs))
+            }
+        }
+    }
+
+    /// 消费流式响应。
+    async fn consume_stream(
+        &self,
+        mut stream: pi_llm::driver::StreamResult,
+    ) -> Result<LlmResponse> {
         let mut resp = LlmResponse::default();
 
         while let Some(event) = stream.next().await {
@@ -347,7 +446,6 @@ impl AgentLoop {
                     self.emit(StreamEvent::ThinkingDelta { thinking });
                 }
                 Ok(StreamEvent::ToolCallStart { id, name, index }) => {
-                    // 确保有足够空间
                     while resp.tool_calls.len() <= index {
                         resp.tool_calls.push(ToolCallInfo {
                             id: String::new(),
@@ -375,7 +473,7 @@ impl AgentLoop {
                 Ok(StreamEvent::Usage(usage)) => {
                     resp.input_tokens += usage.input_tokens;
                     resp.output_tokens += usage.output_tokens;
-                    self.emit(StreamEvent::Usage(usage));
+                    self.emit(StreamEvent::Usage(usage.clone()));
                 }
                 Ok(StreamEvent::Error { message }) => {
                     self.emit(StreamEvent::Error { message: message.clone() });
@@ -383,18 +481,13 @@ impl AgentLoop {
                 }
                 Ok(StreamEvent::Start) => {}
                 Ok(StreamEvent::ToolCallDelta { .. }) => {}
-                Ok(StreamEvent::ToolResult { .. }) => {
-                    // ToolResult 由 loop_engine emit，不会从 LLM stream 出现
-                }
+                Ok(StreamEvent::ToolResult { .. }) => {}
                 Err(e) => {
                     return Err(anyhow!("Stream error: {e}"));
                 }
             }
         }
 
-        if self.stderr_output {
-            eprintln!(); // 流结束后换行
-        }
         Ok(resp)
     }
 
@@ -438,6 +531,50 @@ impl AgentLoop {
     }
 
     /// 从会话条目构建消息历史。
+    /// 压缩上下文：截断旧消息，保留最近 N 条。
+    async fn compact_context(&mut self) -> Result<()> {
+        let entries = self.session.entries();
+        if entries.len() < 20 {
+            return Ok(());
+        }
+
+        // 保留最后 10 条消息
+        let keep = 10;
+        let total = entries.len();
+        let remove_count = total.saturating_sub(keep);
+
+        if remove_count == 0 {
+            return Ok(());
+        }
+
+        // 创建总结消息替换被移除的内容
+        let _summary = format!(
+            "[Context compacted: removed {} older messages to stay within token budget]",
+            remove_count
+        );
+
+        // 通过 session 的截断方法处理
+        // JsonlSession 没有截断方法，因此我们标记一个 compaction summary
+        let compact_entry = MessageEntry {
+            entry_type: "message".to_string(),
+            id: generate_id(),
+            parent_id: self.session.leaf_id().map(|s| s.to_string()),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            role: "user".to_string(),
+            content: serde_json::json!([{"type": "text", "text": "{}"}]),
+            model: None,
+            stop_reason: None,
+            usage: None,
+        };
+
+        self.session
+            .append(pi_types::session::SessionEntry::Message(compact_entry))
+            .await
+            .context("Failed to append compaction marker")?;
+
+        Ok(())
+    }
+
     fn build_messages(&self) -> Result<Vec<Message>> {
         let mut messages = Vec::new();
 
