@@ -23,3 +23,4 @@ pub mod config;
 pub mod auth;
 pub mod dispatch;
 pub mod rpc;
+pub mod version;

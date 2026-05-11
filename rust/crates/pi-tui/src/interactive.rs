@@ -49,6 +49,8 @@ enum Command {
     Abort,
     /// 导出会话为 HTML。
     Export { path: String },
+    /// 压缩上下文。
+    Compact,
 }
 
 /// 交互模式配置。
@@ -162,6 +164,37 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                         agent_state.push_system(&format!("Export failed: {e}"));
                     } else {
                         agent_state.push_system(&format!("Exported to {}", path));
+                    }
+                }
+                Command::Compact => {
+                    agent_state.push_system("Compacting context...");
+                    // 简单实现：截断到最近 10 条消息
+                    let entries = agent_state.entries.read();
+                    let total = entries.len();
+                    drop(entries);
+                    if total > 20 {
+                        // 删除中间条目，保留前 2 条和最后 10 条
+                        let keep_front = 2;
+                        let keep_back = 10;
+                        let mut guard = agent_state.entries.write();
+                        let mut new_entries = Vec::new();
+                        for (i, entry) in guard.drain(..).enumerate() {
+                            if i < keep_front || i >= total - keep_back {
+                                new_entries.push(entry);
+                            }
+                        }
+                        let removed = total - new_entries.len();
+                        *guard = new_entries;
+                        drop(guard);
+                        agent_state.push_system(&format!(
+                            "Compacted: removed {} older messages ({} remaining)",
+                            removed, total - removed
+                        ));
+                    } else {
+                        agent_state.push_system(&format!(
+                            "Only {} messages, no compaction needed",
+                            total
+                        ));
                     }
                 }
             }
@@ -626,7 +659,7 @@ async fn handle_slash_command(
             state.push_system("Chat cleared.");
         }
         SlashCommand::Compact => {
-            state.push_system("Compaction triggered (will run after next response if threshold met).");
+            let _ = cmd_tx.send(Command::Compact);
         }
         SlashCommand::Model(name) => {
             match name {
@@ -703,6 +736,31 @@ async fn handle_slash_command(
                     }
                 }
                 Err(e) => state.push_system(&format!("Search failed: {e}")),
+            }
+        }
+        SlashCommand::Grep(term) => {
+            if term.is_empty() {
+                state.push_system("Usage: /grep <search term>");
+                return;
+            }
+            let entries = state.entries.read();
+            let term_lower = term.to_lowercase();
+            let mut matches = Vec::new();
+            for (i, entry) in entries.iter().enumerate() {
+                if entry.content.to_lowercase().contains(&term_lower) {
+                    let preview = if entry.content.len() > 80 {
+                        format!("{}...", &entry.content[..80])
+                    } else {
+                        entry.content.clone()
+                    };
+                    matches.push(format!("[{}] {}: {}", i, entry.role, preview.replace('\n', " ")));
+                    if matches.len() >= 20 { break; }
+                }
+            }
+            if matches.is_empty() {
+                state.push_system(&format!("No messages matching '{}'", term));
+            } else {
+                state.push_system(&format!("Found {} messages:\n{}", matches.len(), matches.join("\n")));
             }
         }
         SlashCommand::Sessions => {

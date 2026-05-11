@@ -47,6 +47,7 @@ impl JsonlSession {
         let mut entries = Vec::new();
         let mut by_id = HashMap::new();
         let mut current_leaf_id = None;
+        let mut corrupted_lines = 0usize;
 
         for line in lines {
             match serde_json::from_str::<SessionEntry>(line) {
@@ -56,10 +57,18 @@ impl JsonlSession {
                     entries.push(entry);
                 }
                 Err(_) => {
-                    // TS version 跳过格式错误的行
-                    continue;
+                    // TS version 跳过格式错误的行（crash 恢复）
+                    corrupted_lines += 1;
                 }
             }
+        }
+
+        if corrupted_lines > 0 {
+            eprintln!(
+                "Warning: skipped {} corrupted line(s) in session {}",
+                corrupted_lines,
+                path.display()
+            );
         }
 
         Ok(Self {

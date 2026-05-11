@@ -98,9 +98,12 @@ async fn run_print(cli: Cli) -> Result<()> {
     let config_dir = config::config_dir();
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
-    // 确定 provider
+    // 确定 provider（优先级：CLI > config > env > default）
+    let provider_env = std::env::var("PISO_PROVIDER").ok()
+        .or_else(|| std::env::var("PI_PROVIDER").ok());
     let provider = cli.provider.as_deref()
         .or(cfg.provider.as_deref())
+        .or(provider_env.as_deref())
         .unwrap_or("anthropic");
 
     let api_key = cli.api_key.as_deref()
@@ -111,9 +114,12 @@ async fn run_print(cli: Cli) -> Result<()> {
             provider.to_uppercase().replace('-', "_"),
         ))?;
 
-    // 确定 model
+    // 确定 model（优先级：CLI > config > env > default）
+    let model_env = std::env::var("PISO_MODEL").ok()
+        .or_else(|| std::env::var("PI_MODEL").ok());
     let model = cli.model.as_deref()
         .or(cfg.model.as_deref())
+        .or(model_env.as_deref())
         .unwrap_or("claude-sonnet-4-20250514");
 
     // 从 models.json 获取 provider 配置
@@ -317,8 +323,11 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let config_dir = config::config_dir();
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
+    let provider_env = std::env::var("PISO_PROVIDER").ok()
+        .or_else(|| std::env::var("PI_PROVIDER").ok());
     let provider = cli.provider.clone()
         .or(cfg.provider.clone())
+        .or(provider_env)
         .unwrap_or_else(|| "anthropic".to_string());
 
     let api_key = cli.api_key.clone()
@@ -329,8 +338,11 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
             provider.to_uppercase().replace('-', "_"),
         ))?;
 
+    let model_env = std::env::var("PISO_MODEL").ok()
+        .or_else(|| std::env::var("PI_MODEL").ok());
     let model = cli.model.clone()
         .or(cfg.model.clone())
+        .or(model_env)
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
     let provider_config = auth.get_provider(&provider);
@@ -412,8 +424,11 @@ async fn run_rpc(cli: Cli) -> Result<()> {
     let config_dir = config::config_dir();
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
+    let provider_env = std::env::var("PISO_PROVIDER").ok()
+        .or_else(|| std::env::var("PI_PROVIDER").ok());
     let provider = cli.provider.clone()
         .or(cfg.provider.clone())
+        .or(provider_env)
         .unwrap_or_else(|| "anthropic".to_string());
 
     let api_key = cli.api_key.clone()
@@ -423,8 +438,11 @@ async fn run_rpc(cli: Cli) -> Result<()> {
             provider,
         ))?;
 
+    let model_env = std::env::var("PISO_MODEL").ok()
+        .or_else(|| std::env::var("PI_MODEL").ok());
     let model = cli.model.clone()
         .or(cfg.model.clone())
+        .or(model_env)
         .unwrap_or_else(|| "claude-sonnet-4-20250514".to_string());
 
     let provider_config = auth.get_provider(&provider);

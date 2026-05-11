@@ -32,6 +32,8 @@ pub enum SlashCommand {
     Cost,
     /// 搜索会话内容。
     Find(String),
+    /// 在当前会话中搜索消息。
+    Grep(String),
     /// 打开会话选择器。
     Sessions,
     /// 退出。
@@ -63,6 +65,7 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "usage" | "tokens" | "u" => SlashCommand::Usage,
         "cost" | "c" => SlashCommand::Cost,
         "find" | "f" | "search" => SlashCommand::Find(arg.unwrap_or_default()),
+        "grep" | "g" => SlashCommand::Grep(arg.unwrap_or_default()),
         "sessions" | "s" => SlashCommand::Sessions,
         "quit" | "q" | "exit" => SlashCommand::Quit,
         _ => SlashCommand::Unknown(cmd.to_string()),
@@ -82,6 +85,7 @@ pub fn help_text() -> String {
         "  /usage, /u          Show token usage stats",
         "  /cost, /c           Show estimated API cost",
         "  /find, /f <term>    Search across sessions",
+        "  /grep, /g <term>   Search current session messages",
         "  /sessions, /s       Open session picker",
         "  /quit, /q           Quit piso",
     ].join("\n")

@@ -1,4 +1,10 @@
 //! CLI 参数定义。
+//!
+//! 环境变量：
+//! - `PISO_PROVIDER` / `PI_PROVIDER` — 默认 provider
+//! - `PISO_MODEL` / `PI_MODEL` — 默认 model
+//! - `PISO_BASE_URL` — 默认 base URL
+//! - `<PROVIDER>_API_KEY` — API key（如 `GLM_API_KEY`）
 
 use clap::Parser;
 

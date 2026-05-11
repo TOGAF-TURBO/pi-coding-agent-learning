@@ -24,5 +24,17 @@ fn main() -> Result<()> {
     }
 
     let cli = pi_cli::args::Cli::parse();
+
+    // 后台版本检查（非阻塞）
+    if !cli.offline {
+        let check_rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()?;
+        if let Some(latest) = check_rt.block_on(pi_cli::version::check_for_update()) {
+            eprintln!("{}", pi_cli::version::format_update_hint(&latest));
+        }
+        drop(check_rt);
+    }
+
     pi_cli::dispatch::run(cli)
 }
