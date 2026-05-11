@@ -242,12 +242,13 @@ async fn run_print(cli: Cli) -> Result<()> {
     }
 
     // 创建 Agent 循环
-    let model_display = format!("{} ({})", &model, &provider);
+    let provider_display = provider_display_name(&provider);
+    let model_display = format!("{} ({})", &model, &provider_display);
     let mut agent = AgentLoop::new(session, driver, tools, model)
         .with_api_key(api_key)
         .with_system_prompt(
             prompt_builder
-                .with_model_info(&model_display, &provider)
+                .with_model_info(&model_display, &provider_display)
                 .build(),
         );
 
@@ -466,9 +467,10 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let keybindings = pi_tui::KeyBindings::load(&kb_path);
 
     let tui_system_prompt = {
-        let md = format!("{} ({})", &model, &provider);
+        let provider_display = provider_display_name(&provider);
+        let md = format!("{} ({})", &model, &provider_display);
         prompt_builder
-            .with_model_info(&md, &provider)
+            .with_model_info(&md, &provider_display)
             .build()
     };
     let tui_cfg = pi_tui::InteractiveConfig {
@@ -560,6 +562,38 @@ async fn run_rpc(cli: Cli) -> Result<()> {
         cwd,
     )
     .await
+}
+
+/// Provider 内部 ID → 人类可读名称。
+fn provider_display_name(provider: &str) -> String {
+    match provider {
+        "anthropic" => "Anthropic".to_string(),
+        "amazon-bedrock" | "bedrock" => "Amazon Bedrock".to_string(),
+        "azure" | "azure-openai" => "Azure OpenAI".to_string(),
+        "cerebras" => "Cerebras".to_string(),
+        "cloudflare" | "cloudflare-workers" => "Cloudflare Workers AI".to_string(),
+        "deepseek" => "DeepSeek".to_string(),
+        "fireworks" => "Fireworks".to_string(),
+        "google" | "gemini" => "Google Gemini".to_string(),
+        "google-vertex" | "vertex" => "Google Vertex AI".to_string(),
+        "groq" => "Groq".to_string(),
+        "huggingface" => "Hugging Face".to_string(),
+        "mistral" => "Mistral".to_string(),
+        "openai" => "OpenAI".to_string(),
+        "openrouter" => "OpenRouter".to_string(),
+        "together" => "Together AI".to_string(),
+        "xai" => "xAI".to_string(),
+        "xiaomi" => "Xiaomi MiMo".to_string(),
+        "glm" | "zhipu" => "Zhipu AI".to_string(),
+        // 未知 provider：首字母大写返回
+        other => {
+            let mut c = other.chars();
+            match c.next() {
+                Some(f) => f.to_uppercase().collect::<String>() + c.as_str(),
+                None => other.to_string(),
+            }
+        }
+    }
 }
 
 /// 根据 provider 名推断默认 API type（无 models.json 配置时的 fallback）。
@@ -975,4 +1009,26 @@ fn html_escape(s: &str) -> String {
         .replace('<', "&lt;")
         .replace('>', "&gt;")
         .replace('"', "&quot;")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn provider_display_known() {
+        assert_eq!(provider_display_name("glm"), "Zhipu AI");
+        assert_eq!(provider_display_name("zhipu"), "Zhipu AI");
+        assert_eq!(provider_display_name("openai"), "OpenAI");
+        assert_eq!(provider_display_name("anthropic"), "Anthropic");
+        assert_eq!(provider_display_name("deepseek"), "DeepSeek");
+        assert_eq!(provider_display_name("gemini"), "Google Gemini");
+        assert_eq!(provider_display_name("google"), "Google Gemini");
+        assert_eq!(provider_display_name("google-vertex"), "Google Vertex AI");
+    }
+
+    #[test]
+    fn provider_display_unknown_capitalized() {
+        assert_eq!(provider_display_name("my-custom-provider"), "My-custom-provider");
+    }
 }
