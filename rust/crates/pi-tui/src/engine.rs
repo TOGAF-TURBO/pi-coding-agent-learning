@@ -35,7 +35,7 @@ impl TuiEngine {
     /// 初始化 TUI：进入 alternate screen + raw mode。
     pub fn init() -> io::Result<Self> {
         enable_raw_mode()?;
-        crossterm::execute!(io::stderr(), EnterAlternateScreen)?;
+        crossterm::execute!(io::stderr(), EnterAlternateScreen, crossterm::event::EnableMouseCapture)?;
         let backend = CrosstermBackend::new(io::stderr());
         let terminal = Terminal::new(backend)?;
         let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -127,6 +127,6 @@ impl Drop for TuiEngine {
     fn drop(&mut self) {
         self.reader_handle.abort();
         let _ = disable_raw_mode();
-        let _ = crossterm::execute!(io::stderr(), LeaveAlternateScreen);
+        let _ = crossterm::execute!(io::stderr(), crossterm::event::DisableMouseCapture, LeaveAlternateScreen);
     }
 }

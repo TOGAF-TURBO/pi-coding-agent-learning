@@ -490,6 +490,18 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 }
             }
             Event::Resize(_, _) => {}
+            Event::Mouse(mouse) => {
+                use crossterm::event::MouseEventKind;
+                match mouse.kind {
+                    MouseEventKind::ScrollUp => {
+                        scroll_offset = scroll_offset.saturating_add(3);
+                    }
+                    MouseEventKind::ScrollDown => {
+                        scroll_offset = scroll_offset.saturating_sub(3);
+                    }
+                    _ => {}
+                }
+            }
             _ => {}
         }
     }
