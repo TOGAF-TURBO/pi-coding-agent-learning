@@ -21,6 +21,8 @@ pub enum Action {
     ScrollDown,
     /// 新建会话。
     NewSession,
+    /// 打开会话选择器。
+    OpenSessionPicker,
     /// 无操作。
     None,
 }
@@ -39,8 +41,12 @@ pub fn match_key(key: &KeyEvent) -> Action {
         // PageUp/Down: 滚动
         (KeyModifiers::NONE, KeyCode::PageUp) => Action::ScrollUp,
         (KeyModifiers::NONE, KeyCode::PageDown) => Action::ScrollDown,
-        // Enter 在编辑器中换行，Ctrl+Enter 也提交（备选）
+        // Ctrl+Enter 也提交（备选）
         (KeyModifiers::CONTROL, KeyCode::Enter) => Action::Submit,
+        // Ctrl+S: 打开会话选择器
+        (KeyModifiers::CONTROL, KeyCode::Char('s')) => Action::OpenSessionPicker,
+        // Ctrl+N: 新建会话
+        (KeyModifiers::CONTROL, KeyCode::Char('n')) => Action::NewSession,
         _ => Action::None,
     }
 }

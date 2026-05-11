@@ -308,7 +308,9 @@ pub fn render_footer(f: &mut ratatui::Frame, area: Rect, is_running: bool) {
             Span::styled(" Ctrl+C", Style::default().fg(Color::Cyan)),
             Span::styled(" Quit  ", Style::default().fg(Color::DarkGray)),
             Span::styled(" PgUp/PgDn", Style::default().fg(Color::Cyan)),
-            Span::styled(" Scroll", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Scroll  ", Style::default().fg(Color::DarkGray)),
+            Span::styled(" Ctrl+S", Style::default().fg(Color::Cyan)),
+            Span::styled(" Sessions", Style::default().fg(Color::DarkGray)),
         ]
     };
     let para = Paragraph::new(Line::from(spans));

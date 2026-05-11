@@ -86,7 +86,7 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     load_history(&session, &state);
 
     // 缓存 session ID（header 显示用）
-    let session_id_display = session.id().to_string();
+    let mut session_id_display = session.id().to_string();
 
     let (cmd_tx, mut cmd_rx) = mpsc::unbounded_channel::<Command>();
     let abort_flag = Arc::new(AtomicBool::new(false));
@@ -124,12 +124,26 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
     let mut input = InputEditor::new();
     let mut scroll_offset: usize = 0;
 
+    // Overlay 状态
+    let mut overlay: Option<crate::selector::Selector> = None;
+
     loop {
         let sid = session_id_display.clone();
         engine.terminal().draw(|f| {
             let size = f.area();
             let regions = layout::calculate(size, 5);
             components::render_all(f, regions, &state, input.text(), scroll_offset, &sid);
+
+            // 渲染 overlay（如果有）
+            if let Some(ref mut sel) = overlay {
+                // 在 chat 区域中央显示，占 60% 宽度
+                let w = (size.width as f32 * 0.6) as u16;
+                let h = (size.height as f32 * 0.5).min((sel.items.len() + 2) as f32) as u16;
+                let x = (size.width.saturating_sub(w)) / 2;
+                let y = (size.height.saturating_sub(h)) / 2;
+                let sel_area = ratatui::layout::Rect::new(x, y, w, h);
+                crate::selector::Selector::render(f, sel_area, sel);
+            }
         })?;
 
         let event = match engine.next_event().await {
@@ -137,6 +151,46 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
             None => break,
         };
 
+        // Overlay 模式：拦截所有输入
+        if let Some(ref mut sel) = overlay {
+            match event {
+                Event::Key(key) => {
+                    match key.code {
+                        KeyCode::Up => sel.up(),
+                        KeyCode::Down => sel.down(),
+                        KeyCode::Enter => {
+                            if let Some(id) = sel.selected_id().to_owned() {
+                                // 切换会话
+                                let mgr = SessionManager::new(&session_dir);
+                                match mgr.open(&id).await {
+                                    Ok(new_session) => {
+                                        // 停止 agent 并替换 session
+                                        // TODO: 需要协调 agent task
+                                        // 简化版：仅加载历史到 chat
+                                        state.entries.write().clear();
+                                        load_history(&new_session, &state);
+                                        // 更新显示的 session id
+                                        session_id_display = new_session.id().to_string();
+                                    }
+                                    Err(e) => {
+                                        state.set_state(AgentState::Error(format!("Session: {e}")));
+                                    }
+                                }
+                            }
+                            overlay = None;
+                        }
+                        KeyCode::Esc => {
+                            overlay = None;
+                        }
+                        _ => {}
+                    }
+                }
+                _ => {}
+            }
+            continue;
+        }
+
+        // 正常模式
         match event {
             Event::Key(key) => {
                 let action = keybinding::match_key(&key);
@@ -164,6 +218,25 @@ pub async fn run_interactive(cfg: InteractiveConfig) -> Result<()> {
                     }
                     Action::ScrollDown => {
                         scroll_offset = scroll_offset.saturating_sub(5);
+                    }
+                    Action::OpenSessionPicker => {
+                        // 打开会话选择器
+                        let mgr = SessionManager::new(&session_dir);
+                        match mgr.list().await {
+                            Ok(sessions) => {
+                                let items: Vec<crate::selector::SelectItem> = sessions.into_iter().map(|s| {
+                                    crate::selector::SelectItem {
+                                        id: s.id.clone(),
+                                        label: s.id.clone(),
+                                        detail: format!("{} msgs, {}", s.message_count, s.cwd),
+                                    }
+                                }).collect();
+                                if !items.is_empty() {
+                                    overlay = Some(crate::selector::Selector::new("Sessions", items));
+                                }
+                            }
+                            Err(_) => {}
+                        }
                     }
                     Action::None => {
                         if !is_running {

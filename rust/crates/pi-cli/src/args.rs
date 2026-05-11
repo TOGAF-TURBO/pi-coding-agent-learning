@@ -120,3 +120,14 @@ pub struct Cli {
     #[arg(trailing_var_arg = true, allow_hyphen_values = true)]
     pub messages: Vec<String>,
 }
+
+/// 子命令。
+#[derive(Debug, Parser)]
+pub enum Commands {
+    /// Generate shell completion scripts.
+    #[command(name = "completions")]
+    Completions {
+        /// Shell type (bash, zsh, fish, elvish).
+        shell: String,
+    },
+}

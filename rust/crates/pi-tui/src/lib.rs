@@ -7,6 +7,7 @@ pub mod interactive;
 pub mod keybinding;
 pub mod layout;
 pub mod markdown;
+pub mod selector;
 pub mod theme;
 
 pub use app::AppState;

@@ -1,0 +1,69 @@
+#compdef piso
+
+autoload -U is-at-least
+
+_piso() {
+    typeset -A opt_args
+    typeset -a _arguments_options
+    local ret=1
+
+    if is-at-least 5.2; then
+        _arguments_options=(-s -S -C)
+    else
+        _arguments_options=(-s -C)
+    fi
+
+    local context curcontext="$curcontext" state line
+    _arguments "${_arguments_options[@]}" : \
+'--provider=[LLM provider (anthropic, openai, google, etc.)]:PROVIDER:_default' \
+'-m+[Model to use]:MODEL:_default' \
+'--model=[Model to use]:MODEL:_default' \
+'--api-key=[API key for the provider]:API_KEY:_default' \
+'--base-url=[Base URL for the provider API]:BASE_URL:_default' \
+'--thinking=[Thinking level (off, minimal, low, medium, high, xhigh)]:THINKING:_default' \
+'--system-prompt=[System prompt override]:SYSTEM_PROMPT:_default' \
+'*--append-system-prompt=[Append to system prompt (repeatable)]:APPEND_SYSTEM_PROMPT:_default' \
+'--fork=[Fork a session at a specific point]:FORK:_default' \
+'--session=[Session ID to use]:SESSION:_default' \
+'--mode=[Run mode\: interactive, text, json, rpc]:MODE:_default' \
+'--list-models=[List available models]::LIST_MODELS:_default' \
+'--export=[Export session to HTML]:EXPORT:_default' \
+'*-e+[Load extensions from paths]:EXTENSION:_default' \
+'*--extension=[Load extensions from paths]:EXTENSION:_default' \
+'-c[Continue the most recent session]' \
+'--continue[Continue the most recent session]' \
+'-r[Resume a previous session (interactive picker)]' \
+'--resume[Resume a previous session (interactive picker)]' \
+'--no-session[Don'\''t persist session]' \
+'-n[Disable all tools]' \
+'--no-tools[Disable all tools]' \
+'--no-builtin-tools[Disable built-in tools only]' \
+'--no-extensions[Disable extensions]' \
+'--no-skills[Disable skills]' \
+'--no-prompt-templates[Disable prompt templates]' \
+'--no-context-files[Disable context files (AGENTS.md etc)]' \
+'--list-sessions[List previous sessions]' \
+'--offline[Run offline (skip version check)]' \
+'-v[Verbose logging]' \
+'--verbose[Verbose logging]' \
+'-p[Print mode\: non-interactive, output to stdout]' \
+'--print[Print mode\: non-interactive, output to stdout]' \
+'-h[Print help]' \
+'--help[Print help]' \
+'-V[Print version]' \
+'--version[Print version]' \
+'*::messages -- Initial prompt message (positional args):_default' \
+&& ret=0
+}
+
+(( $+functions[_piso_commands] )) ||
+_piso_commands() {
+    local commands; commands=()
+    _describe -t commands 'piso commands' commands "$@"
+}
+
+if [ "$funcstack[1]" = "_piso" ]; then
+    _piso "$@"
+else
+    compdef _piso piso
+fi
