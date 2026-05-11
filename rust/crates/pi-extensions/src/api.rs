@@ -17,6 +17,9 @@ pub trait ExtensionApi {
     /// 注册扩展名称（用于日志和调试）。
     fn name(&self) -> &str;
 
+    /// 订阅 agent 启动前拦截事件。返回 false 阻止执行。
+    fn on_before_agent_start(&mut self, handler: Box<dyn Fn(&str) -> bool + Send + Sync>);
+
     /// 订阅 agent 启动事件。
     fn on_agent_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
 
@@ -41,6 +44,9 @@ pub trait ExtensionApi {
     /// 订阅消息开始事件。
     fn on_message_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
 
+    /// 订阅消息增量更新事件（流式进度）。
+    fn on_message_update(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>);
+
     /// 订阅消息结束事件。
     fn on_message_end(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
 
@@ -49,6 +55,9 @@ pub trait ExtensionApi {
 
     /// 订阅工具执行结束事件。
     fn on_tool_execution_end(&mut self, handler: Box<dyn Fn(&str, &str, bool) + Send + Sync>);
+
+    /// 订阅工具执行进度事件。
+    fn on_tool_execution_update(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>);
 
     /// 订阅会话开始事件。
     fn on_session_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>);
@@ -180,6 +189,7 @@ impl ExtensionStore {
 #[derive(Default)]
 pub struct HookRegistry {
     pub on_agent_start: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_before_agent_start: Vec<Box<dyn Fn(&str) -> bool + Send + Sync>>,
     pub on_agent_done: Vec<Box<dyn Fn(&str) + Send + Sync>>,
     pub on_tool_call_start: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
     pub on_tool_call_end: Vec<Box<dyn Fn(&str, &str, bool) + Send + Sync>>,
@@ -188,8 +198,10 @@ pub struct HookRegistry {
     pub on_turn_end: Vec<Box<dyn Fn(&str) + Send + Sync>>,
     pub on_message_start: Vec<Box<dyn Fn(&str) + Send + Sync>>,
     pub on_message_end: Vec<Box<dyn Fn(&str) + Send + Sync>>,
+    pub on_message_update: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
     pub on_tool_execution_start: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
     pub on_tool_execution_end: Vec<Box<dyn Fn(&str, &str, bool) + Send + Sync>>,
+    pub on_tool_execution_update: Vec<Box<dyn Fn(&str, &str) + Send + Sync>>,
     pub on_session_start: Vec<Box<dyn Fn(&str) + Send + Sync>>,
     pub on_session_compact: Vec<Box<dyn Fn(usize) + Send + Sync>>,
     pub on_session_shutdown: Vec<Box<dyn Fn() + Send + Sync>>,
@@ -280,6 +292,10 @@ impl ExtensionApi for BasicExtensionApi {
         &self.name
     }
 
+    fn on_before_agent_start(&mut self, handler: Box<dyn Fn(&str) -> bool + Send + Sync>) {
+        self.hooks.on_before_agent_start.push(handler);
+    }
+
     fn on_agent_start(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
         self.hooks.on_agent_start.push(handler);
     }
@@ -312,12 +328,20 @@ impl ExtensionApi for BasicExtensionApi {
         self.hooks.on_message_start.push(handler);
     }
 
+    fn on_message_update(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>) {
+        self.hooks.on_message_update.push(handler);
+    }
+
     fn on_message_end(&mut self, handler: Box<dyn Fn(&str) + Send + Sync>) {
         self.hooks.on_message_end.push(handler);
     }
 
     fn on_tool_execution_start(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>) {
         self.hooks.on_tool_execution_start.push(handler);
+    }
+
+    fn on_tool_execution_update(&mut self, handler: Box<dyn Fn(&str, &str) + Send + Sync>) {
+        self.hooks.on_tool_execution_update.push(handler);
     }
 
     fn on_tool_execution_end(&mut self, handler: Box<dyn Fn(&str, &str, bool) + Send + Sync>) {

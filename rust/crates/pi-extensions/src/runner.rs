@@ -21,6 +21,16 @@ impl ExtensionRunner {
         }
     }
 
+    /// 拦截：agent 启动前。返回 false 阻止执行。
+    pub fn fire_before_agent_start(&self, prompt: &str) -> bool {
+        for handler in &self.hooks.on_before_agent_start {
+            if !handler(prompt) {
+                return false;
+            }
+        }
+        true
+    }
+
     /// 通知：agent 开始处理。
     pub fn fire_agent_start(&self, prompt: &str) {
         for handler in &self.hooks.on_agent_start {
@@ -77,6 +87,13 @@ impl ExtensionRunner {
         }
     }
 
+    /// 通知：消息增量更新（流式进度）。
+    pub fn fire_message_update(&self, role: &str, delta: &str) {
+        for handler in &self.hooks.on_message_update {
+            handler(role, delta);
+        }
+    }
+
     /// 通知：消息结束。
     pub fn fire_message_end(&self, role: &str) {
         for handler in &self.hooks.on_message_end {
@@ -95,6 +112,13 @@ impl ExtensionRunner {
     pub fn fire_tool_execution_end(&self, name: &str, output: &str, is_error: bool) {
         for handler in &self.hooks.on_tool_execution_end {
             handler(name, output, is_error);
+        }
+    }
+
+    /// 通知：工具执行进度更新。
+    pub fn fire_tool_execution_update(&self, name: &str, progress: &str) {
+        for handler in &self.hooks.on_tool_execution_update {
+            handler(name, progress);
         }
     }
 
