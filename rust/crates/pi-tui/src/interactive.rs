@@ -1075,6 +1075,7 @@ fn render_session_html_simple(entries: &std::vec::Vec<crate::app::ChatEntry>) ->
         let (class, role) = match &entry.role {
             ChatRole::User => ("user", "You"),
             ChatRole::Assistant => ("assistant", "Assistant"),
+            ChatRole::Thinking => ("thinking", "Thinking"),
             ChatRole::System => ("system", "System"),
             ChatRole::Tool { name, .. } => ("tool", name.as_str()),
         };

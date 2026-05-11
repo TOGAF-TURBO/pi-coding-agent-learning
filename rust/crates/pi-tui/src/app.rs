@@ -24,6 +24,8 @@ pub enum AgentState {
 pub enum ChatRole {
     User,
     Assistant,
+    /// LLM 思考/推理内容（暗色显示，不与正文混合）。
+    Thinking,
     System,
     Tool { name: String, is_error: bool },
 }
@@ -33,6 +35,7 @@ impl std::fmt::Display for ChatRole {
         match self {
             ChatRole::User => write!(f, "You"),
             ChatRole::Assistant => write!(f, "Assistant"),
+            ChatRole::Thinking => write!(f, "Thinking"),
             ChatRole::System => write!(f, "System"),
             ChatRole::Tool { name, .. } => write!(f, "{}", name),
         }
@@ -124,18 +127,16 @@ impl AppState {
     /// 追加或更新思考文本。
     pub fn push_thinking_delta(&self, text: &str) {
         let mut entries = self.entries.write();
-        // 如果最后一条是 streaming 的 assistant 且有 thinking 内容，追加
-        // 否则创建新的 thinking 块（显示在 assistant 消息内）
+        // 如果最后一条是 streaming 的 Thinking，追加
         if let Some(last) = entries.last_mut() {
-            if matches!(last.role, ChatRole::Assistant) && last.streaming {
-                // 在 assistant 内容里追加 thinking 标记
+            if matches!(last.role, ChatRole::Thinking) && last.streaming {
                 last.content.push_str(text);
                 return;
             }
         }
-        // 新 assistant 条目（thinking 内容）
+        // 新 Thinking 条目（与正文 Assistant 分离）
         entries.push(ChatEntry {
-            role: ChatRole::Assistant,
+            role: ChatRole::Thinking,
             content: text.to_string(),
             streaming: true,
         });

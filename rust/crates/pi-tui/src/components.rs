@@ -125,6 +125,12 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
                     .fg(Color::Cyan)
                     .add_modifier(Modifier::BOLD),
             ),
+            ChatRole::Thinking => (
+                "Thinking",
+                Style::default()
+                    .fg(Color::DarkGray)
+                    .add_modifier(Modifier::ITALIC),
+            ),
             ChatRole::System => ("System", Style::default().fg(Color::Yellow)),
             ChatRole::Tool { name, is_error } => (
                 name.as_str(),
@@ -146,6 +152,7 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
         let content_style = match &entry.role {
             ChatRole::Tool { is_error, .. } if *is_error => Style::default().fg(Color::Red),
             ChatRole::Tool { .. } => Style::default().fg(Color::Gray),
+            ChatRole::Thinking => Style::default().fg(Color::DarkGray),
             _ => Style::default(),
         };
 
