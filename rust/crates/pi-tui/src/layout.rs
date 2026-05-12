@@ -26,9 +26,20 @@ pub enum Region {
     Footer,
 }
 
+/// 左右边距（字符数）。
+const HORIZONTAL_PADDING: u16 = 2;
+
 /// 计算四区布局。
 pub fn calculate(area: Rect, editor_height: u16) -> LayoutRegions {
     let editor_h = editor_height.max(3).min(area.height / 2);
+
+    // 先水平内缩，留出左右边距
+    let padded = Rect {
+        x: area.x + HORIZONTAL_PADDING,
+        y: area.y,
+        width: area.width.saturating_sub(HORIZONTAL_PADDING * 2),
+        height: area.height,
+    };
 
     let outer = Layout::default()
         .direction(Direction::Vertical)
@@ -38,7 +49,7 @@ pub fn calculate(area: Rect, editor_height: u16) -> LayoutRegions {
             Constraint::Length(editor_h), // editor
             Constraint::Length(1),        // footer
         ])
-        .split(area);
+        .split(padded);
 
     LayoutRegions {
         chat: outer[0],
