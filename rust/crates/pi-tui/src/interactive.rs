@@ -149,6 +149,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let agent_state = state.clone();
     let agent_abort = abort_flag.clone();
     let agent_ctx = ctx.clone();
+    let cwd_for_slash = agent_ctx.cwd.clone();
 
     // 共享的 diff viewer 状态
     let diff_viewer_shared: Arc<std::sync::RwLock<Option<crate::diff_viewer::DiffViewer>>> =
@@ -461,7 +462,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
 
                             // 检查 slash 命令
                             if let Some(cmd) = crate::slash::parse(&text) {
-                                handle_slash_command(
+                                let skill_content = handle_slash_command(
                                     cmd,
                                     &state,
                                     &cmd_tx,
@@ -469,8 +470,13 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                                     &mut overlay,
                                     &mut overlay_kind,
                                     &extension_runner,
+                                    std::path::Path::new(&cwd_for_slash),
                                 )
                                 .await;
+                                if let Some(skill_text) = skill_content {
+                                    *last_user_msg.write().unwrap() = skill_text.clone();
+                                    let _ = cmd_tx.send(Command::Send { text: skill_text });
+                                }
                                 continue;
                             }
 
@@ -843,7 +849,8 @@ async fn handle_slash_command(
     overlay: &mut Option<crate::selector::Selector>,
     overlay_kind: &mut Option<OverlayKind>,
     extension_runner: &Option<Arc<pi_extensions::ExtensionRunner>>,
-) {
+    cwd: &std::path::Path,
+) -> Option<String> {
     use crate::slash::SlashCommand;
 
     // 先检查扩展注册的命令
@@ -858,7 +865,7 @@ async fn handle_slash_command(
                     Ok(()) => {}
                     Err(e) => state.push_system(&format!("Command /{} failed: {}", name, e)),
                 }
-                return;
+                return None;
             }
         }
     }
@@ -949,7 +956,7 @@ async fn handle_slash_command(
         SlashCommand::Find(term) => {
             if term.is_empty() {
                 state.push_system("Usage: /find <search term>");
-                return;
+                return None;
             }
             let mgr = SessionManager::new(session_dir.to_path_buf());
             match mgr.list().await {
@@ -985,7 +992,7 @@ async fn handle_slash_command(
         SlashCommand::Grep(term) => {
             if term.is_empty() {
                 state.push_system("Usage: /grep <search term>");
-                return;
+                return None;
             }
             let entries = state.entries.read();
             let term_lower = term.to_lowercase();
@@ -1184,6 +1191,18 @@ async fn handle_slash_command(
         SlashCommand::Logout => {
             state.push_system("Use 'piso logout' from terminal to clear OAuth token.");
         }
+        SlashCommand::Skill(name) => {
+            match crate::slash::resolve_skill(&name, cwd) {
+                Ok(content) => {
+                    state.push_system(&format!("Loaded skill: {}", name));
+                    // Return the skill content as the actual user message
+                    return Some(content);
+                }
+                Err(e) => {
+                    state.push_system(&format!("Skill error: {e}"));
+                }
+            }
+        }
         SlashCommand::Unknown(cmd) => {
             state.push_system(&format!(
                 "Unknown command: /{}. Type /help for available commands.",
@@ -1191,6 +1210,7 @@ async fn handle_slash_command(
             ));
         }
     }
+    None
 }
 
 /// 简化 HTML 渲染（从 AppState entries 生成）。

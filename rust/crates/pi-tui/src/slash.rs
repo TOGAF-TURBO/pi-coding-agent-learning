@@ -50,6 +50,8 @@ pub enum SlashCommand {
     Import(String),
     /// 克隆当前会话。
     Clone,
+    /// 展开 skill: /skill:<name> 读取 SKILL.md 并注入。
+    Skill(String),
     /// 打开会话选择器。
     Sessions,
     /// 打开 diff 查看器。
@@ -62,6 +64,34 @@ pub enum SlashCommand {
     Quit,
     /// 未知命令。
     Unknown(String),
+}
+
+/// 从文件系统解析 skill 的 SKILL.md 内容。
+/// 搜索路径：
+/// 1. <project>/.piso/skills/<name>/SKILL.md
+/// 2. ~/.piso/skills/<name>/SKILL.md
+///
+/// 返回 SKILL.md 的文本内容，或错误信息。
+pub fn resolve_skill(name: &str, cwd: &std::path::Path) -> Result<String, String> {
+    let skill_file = std::path::PathBuf::from(format!("{}/SKILL.md", name));
+
+    // 1. Project-local skills
+    let project_path = cwd.join(".piso").join("skills").join(&skill_file);
+    if project_path.exists() {
+        return std::fs::read_to_string(&project_path)
+            .map_err(|e| format!("Failed to read {}: {e}", project_path.display()));
+    }
+
+    // 2. User-global skills
+    if let Some(home) = dirs::home_dir() {
+        let global_path = home.join(".piso").join("skills").join(&skill_file);
+        if global_path.exists() {
+            return std::fs::read_to_string(&global_path)
+                .map_err(|e| format!("Failed to read {}: {e}", global_path.display()));
+        }
+    }
+
+    Err(format!("Skill '{}' not found. Searched .piso/skills/ and ~/.piso/skills/", name))
 }
 
 /// 解析输入文本为 slash 命令。
@@ -101,6 +131,14 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "login" => SlashCommand::Login,
         "logout" => SlashCommand::Logout,
         "quit" | "q" | "exit" => SlashCommand::Quit,
+        other if other.starts_with("skill:") => {
+            let skill_name = other.strip_prefix("skill:").unwrap_or("").to_string();
+            if skill_name.is_empty() {
+                SlashCommand::Unknown(other.to_string())
+            } else {
+                SlashCommand::Skill(skill_name)
+            }
+        }
         _ => SlashCommand::Unknown(cmd.to_string()),
     })
 }
@@ -128,6 +166,7 @@ pub fn help_text() -> String {
         "  /import, /i <path>  Import JSONL session file",
         "  /clone              Duplicate current session",
         "  /sessions, /s       Open session picker",
+        "  /skill:<name>       Load skill (e.g. /skill:debug)",
         "  /diff, /d           Open diff viewer",
         "  /login              GitHub Copilot OAuth login",
         "  /logout             Clear cached OAuth token",
@@ -219,5 +258,41 @@ mod tests {
             Some(SlashCommand::Clone) => {}
             _ => panic!("Expected Clone"),
         }
+    }
+
+    #[test]
+    fn parse_skill() {
+        match parse("/skill:debug") {
+            Some(SlashCommand::Skill(name)) => assert_eq!(name, "debug"),
+            _ => panic!("Expected Skill"),
+        }
+    }
+
+    #[test]
+    fn parse_skill_empty_is_unknown() {
+        match parse("/skill:") {
+            Some(SlashCommand::Unknown(cmd)) => assert_eq!(cmd, "skill:"),
+            _ => panic!("Expected Unknown"),
+        }
+    }
+
+    #[test]
+    fn resolve_skill_reads_project_local() {
+        let dir = tempfile::tempdir().unwrap();
+        let skills_dir = dir.path().join(".piso").join("skills").join("debug");
+        std::fs::create_dir_all(&skills_dir).unwrap();
+        std::fs::write(skills_dir.join("SKILL.md"), "# Debug Skill\nUse for debugging.").unwrap();
+
+        let result = resolve_skill("debug", dir.path());
+        assert!(result.is_ok());
+        assert!(result.unwrap().contains("Debug Skill"));
+    }
+
+    #[test]
+    fn resolve_skill_not_found() {
+        let dir = tempfile::tempdir().unwrap();
+        let result = resolve_skill("nonexistent", dir.path());
+        assert!(result.is_err());
+        assert!(result.unwrap_err().contains("not found"));
     }
 }
