@@ -159,6 +159,20 @@ pub trait ExtensionApi {
     /// description: 说明
     fn register_flag(&mut self, name: &str, flag_type: &str, description: &str);
 
+    /// 注册消息转换钩子 — 在 LLM 调用前修改消息列表。
+    /// 扩展可裁剪、重新排序或注入消息。
+    fn on_transform_context(
+        &mut self,
+        handler: Box<dyn Fn(&mut Vec<pi_types::message::Message>) + Send + Sync>,
+    );
+
+    /// 注册消息格式转换钩子 — 自定义消息到 LLM 格式的转换。
+    /// 默认使用 transform.rs 的标准转换。
+    fn on_convert_to_llm(
+        &mut self,
+        handler: Box<dyn Fn(&[pi_types::message::Message]) -> Vec<serde_json::Value> + Send + Sync>,
+    );
+
     // ── UI 对话框 API ───────────────────────────────────────
 
     /// 弹出选择列表，返回用户选中的索引。
@@ -249,6 +263,9 @@ pub struct HookRegistry {
     pub session_name: Option<String>,
     pub labels: Vec<(String, String)>,
     pub flags: Vec<FlagEntry>,
+    pub transform_context: Vec<Box<dyn Fn(&mut Vec<pi_types::message::Message>) + Send + Sync>>,
+    pub convert_to_llm:
+        Vec<Box<dyn Fn(&[pi_types::message::Message]) -> Vec<serde_json::Value> + Send + Sync>>,
 }
 
 /// 注册的工具条目。
@@ -500,6 +517,20 @@ impl ExtensionApi for BasicExtensionApi {
             flag_type: flag_type.to_string(),
             description: description.to_string(),
         });
+    }
+
+    fn on_transform_context(
+        &mut self,
+        handler: Box<dyn Fn(&mut Vec<pi_types::message::Message>) + Send + Sync>,
+    ) {
+        self.hooks.transform_context.push(handler);
+    }
+
+    fn on_convert_to_llm(
+        &mut self,
+        handler: Box<dyn Fn(&[pi_types::message::Message]) -> Vec<serde_json::Value> + Send + Sync>,
+    ) {
+        self.hooks.convert_to_llm.push(handler);
     }
 }
 

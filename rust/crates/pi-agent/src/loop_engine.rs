@@ -300,7 +300,10 @@ impl AgentLoop {
                     }
 
                     // 构建消息历史
-                    let messages = self.build_messages()?;
+                    let mut messages = self.build_messages()?;
+
+                    // 扩展钩子：transform_context — 在 LLM 调用前修改消息
+                    self.fire_transform_context(&mut messages);
 
                     // 构建请求
                     let request = CompletionRequest {
@@ -762,6 +765,15 @@ impl AgentLoop {
         if let Some(ref weak) = self.extension_runner {
             if let Some(runner) = weak.upgrade() {
                 runner.fire_tool_call_end(name, output, is_error);
+            }
+        }
+    }
+
+    /// 触发 transform_context 钩子 — 扩展可修改消息列表。
+    fn fire_transform_context(&self, messages: &mut Vec<Message>) {
+        if let Some(ref weak) = self.extension_runner {
+            if let Some(runner) = weak.upgrade() {
+                runner.fire_transform_context(messages);
             }
         }
     }

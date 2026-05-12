@@ -164,6 +164,13 @@ impl ExtensionRunner {
         }
     }
 
+    /// 触发 transform_context 钩子 — 扩展可修改消息列表。
+    pub fn fire_transform_context(&self, messages: &mut Vec<pi_types::message::Message>) {
+        for handler in &self.hooks.transform_context {
+            handler(messages);
+        }
+    }
+
     /// 获取注册的 provider 列表。
     pub fn providers(&self) -> &[crate::api::ProviderEntry] {
         &self.hooks.providers
@@ -285,5 +292,32 @@ mod tests {
         assert!(runner.find_tool("grep").is_some());
         assert!(runner.find_tool("missing").is_none());
         assert_eq!(runner.tool_names(), vec!["grep"]);
+    }
+
+    #[test]
+    fn fire_transform_context_modifies_messages() {
+        let mut hooks = HookRegistry::default();
+        hooks.transform_context.push(Box::new(|msgs| {
+            // 只保留最后一条消息
+            if msgs.len() > 1 {
+                let last = msgs.pop().unwrap();
+                msgs.clear();
+                msgs.push(last);
+            }
+        }));
+
+        let runner = ExtensionRunner::new(hooks);
+        let mut msgs = vec![
+            pi_types::message::Message::User(pi_types::message::UserMessage {
+                role: "user".to_string(),
+                content: vec![pi_types::message::ContentBlock::text("first")],
+            }),
+            pi_types::message::Message::User(pi_types::message::UserMessage {
+                role: "user".to_string(),
+                content: vec![pi_types::message::ContentBlock::text("last")],
+            }),
+        ];
+        runner.fire_transform_context(&mut msgs);
+        assert_eq!(msgs.len(), 1);
     }
 }
