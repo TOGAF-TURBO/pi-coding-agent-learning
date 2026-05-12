@@ -1059,45 +1059,23 @@ async fn handle_slash_command(
             if let Some(entry) = last_assistant {
                 let text = entry.content.clone();
                 drop(entries);
-                // 尝试复制到剪贴板
-                match std::process::Command::new("xclip")
-                    .args(["-selection", "clipboard"])
-                    .stdin(std::process::Stdio::piped())
-                    .spawn()
-                {
-                    Ok(mut child) => {
-                        if let Some(stdin) = child.stdin.as_mut() {
-                            use std::io::Write;
-                            let _ = stdin.write_all(text.as_bytes());
-                        }
-                        let _ = child.wait();
-                        ctx.state
-                            .push_system(&format!("Copied {} chars to clipboard", text.len()));
-                    }
-                    Err(_) => {
-                        // xclip 不可用，尝试 pbcopy (macOS)
-                        match std::process::Command::new("pbcopy")
-                            .stdin(std::process::Stdio::piped())
-                            .spawn()
-                        {
-                            Ok(mut child) => {
-                                if let Some(stdin) = child.stdin.as_mut() {
-                                    use std::io::Write;
-                                    let _ = stdin.write_all(text.as_bytes());
-                                }
-                                let _ = child.wait();
-                                ctx.state.push_system(&format!(
-                                    "Copied {} chars to clipboard",
-                                    text.len()
-                                ));
-                            }
-                            Err(_) => {
-                                ctx.state.push_system(
-                                    "No clipboard tool found (install xclip or pbcopy)",
-                                );
-                            }
-                        }
-                    }
+                let len = text.len();
+                if clipboard_osc52(&text) {
+                    ctx.state
+                        .push_system(&format!("Copied {} chars to clipboard (OSC 52)", len));
+                } else if clipboard_cmd(&text, "xclip", &["-selection", "clipboard"]) {
+                    ctx.state
+                        .push_system(&format!("Copied {} chars to clipboard (xclip)", len));
+                } else if clipboard_cmd(&text, "wl-copy", &[]) {
+                    ctx.state
+                        .push_system(&format!("Copied {} chars to clipboard (wl-copy)", len));
+                } else if clipboard_cmd(&text, "pbcopy", &[]) {
+                    ctx.state
+                        .push_system(&format!("Copied {} chars to clipboard (pbcopy)", len));
+                } else {
+                    ctx.state.push_system(
+                        "Clipboard not available. Set TERM=xterm-256color or install xclip/wl-copy/pbcopy",
+                    );
                 }
             } else {
                 drop(entries);
@@ -1281,4 +1259,69 @@ pre {{ white-space: pre-wrap; margin: 0; }}
 </style></head><body>{}</body></html>"#,
         body
     )
+}
+
+// ============================================================================
+// Clipboard helpers
+// ============================================================================
+
+/// Copy text to clipboard via OSC 52 escape sequence.
+/// Works in xterm, kitty, alacritty, iTerm2, wezterm, Windows Terminal, etc.
+/// No external binary required.
+fn clipboard_osc52(text: &str) -> bool {
+    let encoded = base64_encode(text.as_bytes());
+    let seq = format!("\x1b]52;c;{}\x07", encoded);
+    use std::io::Write;
+    match std::io::stderr().write_all(seq.as_bytes()) {
+        Ok(()) => std::io::stderr().flush().is_ok(),
+        Err(_) => false,
+    }
+}
+
+/// Minimal base64 encoder (avoids pulling in a crate for one use).
+fn base64_encode(data: &[u8]) -> String {
+    const TABLE: &[u8; 64] =
+        b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+    let mut out = String::with_capacity(data.len().div_ceil(3) * 4);
+    let mut i = 0;
+    while i + 3 <= data.len() {
+        let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8) | (data[i + 2] as u32);
+        out.push(TABLE[((n >> 18) & 0x3F) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3F) as usize] as char);
+        out.push(TABLE[((n >> 6) & 0x3F) as usize] as char);
+        out.push(TABLE[(n & 0x3F) as usize] as char);
+        i += 3;
+    }
+    if data.len() - i == 1 {
+        let n = (data[i] as u32) << 16;
+        out.push(TABLE[((n >> 18) & 0x3F) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3F) as usize] as char);
+        out.push('=');
+        out.push('=');
+    } else if data.len() - i == 2 {
+        let n = ((data[i] as u32) << 16) | ((data[i + 1] as u32) << 8);
+        out.push(TABLE[((n >> 18) & 0x3F) as usize] as char);
+        out.push(TABLE[((n >> 12) & 0x3F) as usize] as char);
+        out.push(TABLE[((n >> 6) & 0x3F) as usize] as char);
+        out.push('=');
+    }
+    out
+}
+
+/// Copy text to clipboard via external command (xclip, wl-copy, pbcopy).
+fn clipboard_cmd(text: &str, cmd: &str, args: &[&str]) -> bool {
+    match std::process::Command::new(cmd)
+        .args(args)
+        .stdin(std::process::Stdio::piped())
+        .spawn()
+    {
+        Ok(mut child) => {
+            if let Some(stdin) = child.stdin.as_mut() {
+                use std::io::Write;
+                let _ = stdin.write_all(text.as_bytes());
+            }
+            child.wait().is_ok()
+        }
+        Err(_) => false,
+    }
 }
