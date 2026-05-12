@@ -181,13 +181,34 @@ pub async fn compact(
         return Ok(false);
     }
 
-    // 注意：真正的压缩需要修改 session 文件（移除旧条目 + 插入摘要条目）。
-    // 当前 JSONL session 是 append-only，无法删除。
-    // 所以我们只是记录摘要，不做文件修改。
-    // 真正的压缩需要 session 格式支持条目删除或分叉。
+    // 计算归档范围：第一条和最后一条旧消息的 ID
+    let first_id = old_messages.first().map(|e| e.id().to_string());
+    let last_id = old_messages.last().map(|e| e.id().to_string());
+    let archived_range = match (first_id, last_id) {
+        (Some(f), Some(l)) if f != l => Some(vec![f, l]),
+        _ => None,
+    };
+
+    // 写入 compaction 条目到 JSONL（append-only）
+    let compaction_entry = pi_types::session::CompactionEntry {
+        entry_type: "compaction".to_string(),
+        id: format!("compact-{}", chrono::Utc::now().timestamp_millis()),
+        parent_id: session.leaf_id().map(|s| s.to_string()),
+        timestamp: chrono::Utc::now().to_rfc3339(),
+        summary: serde_json::json!({
+            "text": summary,
+            "entries_compacted": old_messages.len(),
+        }),
+        archived_range,
+    };
+
+    session
+        .append(pi_types::session::SessionEntry::Compaction(compaction_entry))
+        .await
+        .map_err(|e| anyhow::anyhow!("Failed to write compaction entry: {e}"))?;
 
     tracing::info!(
-        "[compaction] Would compact {} entries into summary ({} chars)",
+        "[compaction] Compacted {} entries into summary ({} chars)",
         old_messages.len(),
         summary.len()
     );

@@ -137,6 +137,34 @@ impl JsonlSession {
         &self.entries
     }
 
+    /// 获取所有未被归档的条目（跳过 compaction archived_range 覆盖的旧条目）。
+    pub fn active_entries(&self) -> Vec<&SessionEntry> {
+        // 收集所有被归档的条目 ID
+        let mut archived_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for entry in &self.entries {
+            if let SessionEntry::Compaction(c) = entry {
+                if let Some(ref range) = c.archived_range {
+                    if range.len() == 2 {
+                        let start_idx = self.by_id.get(&range[0]).copied();
+                        let end_idx = self.by_id.get(&range[1]).copied();
+                        if let (Some(si), Some(ei)) = (start_idx, end_idx) {
+                            for i in si..=ei {
+                                if let Some(e) = self.entries.get(i) {
+                                    archived_ids.insert(e.id().to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        self.entries
+            .iter()
+            .filter(|e| !archived_ids.contains(e.id()))
+            .collect()
+    }
+
     /// 获取当前叶子节点 ID（最后追加的条目）。
     pub fn leaf_id(&self) -> Option<&str> {
         self.current_leaf_id.as_deref()
@@ -277,5 +305,48 @@ mod tests {
         assert_eq!(path.len(), 3);
         assert_eq!(path[0].id(), "m1");
         assert_eq!(path[2].id(), "m3");
+    }
+
+    #[tokio::test]
+    async fn active_entries_skips_archived() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+        let mut session = JsonlSession::create(&path, "/test").await.unwrap();
+
+        // 追加 m1, m2, m3
+        for i in 1..=3 {
+            let entry = SessionEntry::Message(pi_types::session::MessageEntry {
+                entry_type: "message".to_string(),
+                id: format!("m{}", i),
+                parent_id: if i == 1 { None } else { Some(format!("m{}", i - 1)) },
+                timestamp: format!("2025-01-01T00:00:0{}Z", i),
+                role: "user".to_string(),
+                content: serde_json::json!([{"type": "text", "text": format!("msg {}", i)}]),
+                model: None,
+                stop_reason: None,
+                usage: None,
+            });
+            session.append(entry).await.unwrap();
+        }
+
+        assert_eq!(session.entries().len(), 3);
+        assert_eq!(session.active_entries().len(), 3);
+
+        // 追加 compaction，归档 m1..m2
+        let compaction = SessionEntry::Compaction(pi_types::session::CompactionEntry {
+            entry_type: "compaction".to_string(),
+            id: "c1".to_string(),
+            parent_id: Some("m3".to_string()),
+            timestamp: "2025-01-01T00:00:04Z".to_string(),
+            summary: serde_json::json!({"text": "summary of m1-m2"}),
+            archived_range: Some(vec!["m1".to_string(), "m2".to_string()]),
+        });
+        session.append(compaction).await.unwrap();
+
+        // active_entries 应该只返回 m3 + compaction entry (不归档自身)
+        let active = session.active_entries();
+        assert_eq!(active.len(), 2); // m3 + compaction
+        assert_eq!(active[0].id(), "m3");
+        assert_eq!(active[1].id(), "c1");
     }
 }

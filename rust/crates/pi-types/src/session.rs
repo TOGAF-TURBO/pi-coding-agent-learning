@@ -81,6 +81,9 @@ pub struct CompactionEntry {
     pub parent_id: Option<String>,
     pub timestamp: String,
     pub summary: serde_json::Value,
+    /// 被归档的条目 ID 范围 [start_id, end_id]。
+    #[serde(default, rename = "archivedRange")]
+    pub archived_range: Option<Vec<String>>,
 }
 
 /// 标签条目 — 用户在条目上打的标签。

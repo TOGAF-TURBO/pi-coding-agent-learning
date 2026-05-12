@@ -815,7 +815,7 @@ impl AgentLoop {
     fn build_messages(&self) -> Result<Vec<Message>> {
         let mut messages = Vec::new();
 
-        for entry in self.session.entries() {
+        for entry in self.session.active_entries() {
             if let pi_types::session::SessionEntry::Message(me) = entry {
                 match me.role.as_str() {
                     "user" => {
