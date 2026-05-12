@@ -55,6 +55,10 @@ pub struct AgentLoop {
     max_retries: usize,
     /// 文件写入互斥锁 — 序列化 write/edit 工具调用。
     file_write_lock: Arc<tokio::sync::Mutex<()>>,
+    /// 内层 steering 消息接收器（非阻塞轮询，打断当前轮次）。
+    steering_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
+    /// 外层 followUp 消息接收器（阻塞等待，轮次结束后追加）。
+    follow_up_rx: Option<tokio::sync::mpsc::UnboundedReceiver<String>>,
 }
 
 /// Agent 循环输出 — 收集的最终响应。
@@ -118,6 +122,8 @@ impl AgentLoop {
             stream_timeout_secs: 120,
             max_retries: 3,
             file_write_lock: Arc::new(tokio::sync::Mutex::new(())),
+            steering_rx: None,
+            follow_up_rx: None,
         }
     }
 
@@ -178,6 +184,29 @@ impl AgentLoop {
         self
     }
 
+    /// 设置 steering 和 followUp 通道。
+    pub fn with_channels(
+        mut self,
+        steering_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
+        follow_up_rx: tokio::sync::mpsc::UnboundedReceiver<String>,
+    ) -> Self {
+        self.steering_rx = Some(steering_rx);
+        self.follow_up_rx = Some(follow_up_rx);
+        self
+    }
+
+    /// 创建 steering/followUp 通道对，返回 (steering_tx, follow_up_tx)。
+    pub fn create_channels() -> (
+        tokio::sync::mpsc::UnboundedSender<String>,
+        tokio::sync::mpsc::UnboundedSender<String>,
+        tokio::sync::mpsc::UnboundedReceiver<String>,
+        tokio::sync::mpsc::UnboundedReceiver<String>,
+    ) {
+        let (stx, srx) = tokio::sync::mpsc::unbounded_channel();
+        let (ftx, frx) = tokio::sync::mpsc::unbounded_channel();
+        (stx, ftx, srx, frx)
+    }
+
     /// 发射事件到 sink 和/或 stderr。
     fn emit(&self, event: StreamEvent) {
         if let Some(sink) = &self.stream_sink {
@@ -222,141 +251,204 @@ impl AgentLoop {
         let mut total_thinking = String::new();
         let mut total_tool_calls = 0;
 
-        for _iteration in 1..=self.max_iterations {
-            // 上下文窗口预算检查
-            let estimated = self.estimate_context_tokens();
-            self.emit(StreamEvent::ContextTokens { tokens: estimated });
-            // 大多数模型 context window >= 128K，当估算超过 100K 时触发压缩
-            if estimated > 100_000 {
-                self.emit(StreamEvent::Error {
-                    message: format!(
-                        "Context budget near limit (~{} tokens), compacting...",
-                        estimated
-                    ),
-                });
-                if let Err(e) = self.compact_context().await {
-                    self.emit(StreamEvent::Error {
-                        message: format!("Compaction failed: {}", e),
+        // 外层循环：处理 followUp 消息
+        'outer: loop {
+            let mut has_more_tool_calls = true;
+
+            // 内层循环：ReAct + steering
+            while has_more_tool_calls {
+                has_more_tool_calls = false;
+
+                for _iteration in 1..=self.max_iterations {
+                    // 上下文窗口预算检查
+                    let estimated = self.estimate_context_tokens();
+                    self.emit(StreamEvent::ContextTokens { tokens: estimated });
+                    // 大多数模型 context window >= 128K，当估算超过 100K 时触发压缩
+                    if estimated > 100_000 {
+                        self.emit(StreamEvent::Error {
+                            message: format!(
+                                "Context budget near limit (~{} tokens), compacting...",
+                                estimated
+                            ),
+                        });
+                        if let Err(e) = self.compact_context().await {
+                            self.emit(StreamEvent::Error {
+                                message: format!("Compaction failed: {}", e),
+                            });
+                        }
+                    }
+
+                    // 构建消息历史
+                    let messages = self.build_messages()?;
+
+                    // 构建请求
+                    let request = CompletionRequest {
+                        model: self.model.clone(),
+                        system_prompt: Some(self.system_prompt.clone()),
+                        messages,
+                        tools: self.tools.definitions(),
+                        thinking_enabled: false,
+                        thinking_budget: None,
+                        max_tokens: self.max_tokens,
+                        api_key: self.api_key.clone(),
+                        base_url: self.base_url.clone(),
+                    };
+
+                    // 调用 LLM，收集流式响应
+                    let response = self.call_llm(request).await?;
+
+                    // 累积 token 用量
+                    self.usage.input_tokens += response.input_tokens;
+                    self.usage.output_tokens += response.output_tokens;
+
+                    // 收集内容块
+                    let mut assistant_content: Vec<ContentBlock> = Vec::new();
+
+                    if !response.text.is_empty() {
+                        assistant_content.push(ContentBlock::text(&response.text));
+                        total_text.push_str(&response.text);
+                    }
+                    if !response.thinking.is_empty() {
+                        total_thinking.push_str(&response.thinking);
+                    }
+                    for tc in &response.tool_calls {
+                        assistant_content.push(ContentBlock::tool_call(&tc.id, &tc.name, tc.input.clone()));
+                    }
+
+                    // 追加助手消息到会话
+                    let assistant_entry = MessageEntry {
+                        entry_type: "message".to_string(),
+                        id: generate_id(),
+                        parent_id: self.session.leaf_id().map(|s| s.to_string()),
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        role: "assistant".to_string(),
+                        content: serde_json::json!(assistant_content
+                            .iter()
+                            .map(content_block_to_json)
+                            .collect::<Vec<_>>()),
+                        model: Some(self.model.clone()),
+                        stop_reason: response
+                            .stop_reason
+                            .map(|r| format!("{r:?}").to_lowercase()),
+                        usage: None,
+                    };
+                    self.session
+                        .append(pi_types::session::SessionEntry::Message(assistant_entry))
+                        .await
+                        .context("Failed to append assistant message")?;
+
+                    // 如果没有工具调用，内层循环结束
+                    if response.tool_calls.is_empty() {
+                        break;
+                    }
+
+                    // 执行工具调用
+                    total_tool_calls += response.tool_calls.len();
+                    let tool_calls = &response.tool_calls;
+                    let has_sequential = tool_calls.iter().any(|tc| {
+                        self.tools.get_definition(&tc.name)
+                            .map(|d| matches!(d.execution_mode, ExecutionMode::Sequential))
+                            .unwrap_or(false)
                     });
+
+                    let (tool_results, any_terminate) = if has_sequential || tool_calls.len() <= 1 {
+                        self.execute_tools_sequential(tool_calls).await?
+                    } else {
+                        self.execute_tools_parallel(tool_calls).await?
+                    };
+
+                    // 检查 terminate 信号
+                    if any_terminate {
+                        tracing::info!("[agent] Tool requested terminate, stopping ReAct loop");
+                        break 'outer;
+                    }
+
+                    // 追加工具结果到会话
+                    let tool_result_entry = MessageEntry {
+                        entry_type: "message".to_string(),
+                        id: generate_id(),
+                        parent_id: self.session.leaf_id().map(|s| s.to_string()),
+                        timestamp: chrono::Utc::now().to_rfc3339(),
+                        role: "user".to_string(),
+                        content: serde_json::json!(tool_results
+                            .iter()
+                            .map(content_block_to_json)
+                            .collect::<Vec<_>>()),
+                        model: None,
+                        stop_reason: None,
+                        usage: None,
+                    };
+                    self.session
+                        .append(pi_types::session::SessionEntry::Message(tool_result_entry))
+                        .await
+                        .context("Failed to append tool results")?;
+
+                    has_more_tool_calls = true;
+
+                    // 内层末尾：非阻塞轮询 steering 消息
+                    if let Some(ref mut rx) = self.steering_rx {
+                        while let Ok(steering_msg) = rx.try_recv() {
+                            tracing::info!("[agent] Steering message received ({} chars)", steering_msg.len());
+                            let steering_entry = MessageEntry {
+                                entry_type: "message".to_string(),
+                                id: generate_id(),
+                                parent_id: self.session.leaf_id().map(|s| s.to_string()),
+                                timestamp: chrono::Utc::now().to_rfc3339(),
+                                role: "user".to_string(),
+                                content: serde_json::json!([{
+                                    "type": "text",
+                                    "text": steering_msg
+                                }]),
+                                model: None,
+                                stop_reason: None,
+                                usage: None,
+                            };
+                            self.session
+                                .append(pi_types::session::SessionEntry::Message(steering_entry))
+                                .await?;
+                        }
+                    }
                 }
             }
 
-            // 构建消息历史
-            let messages = self.build_messages()?;
-
-            // 构建请求
-            let request = CompletionRequest {
-                model: self.model.clone(),
-                system_prompt: Some(self.system_prompt.clone()),
-                messages,
-                tools: self.tools.definitions(),
-                thinking_enabled: false,
-                thinking_budget: None,
-                max_tokens: self.max_tokens,
-                api_key: self.api_key.clone(),
-                base_url: self.base_url.clone(),
-            };
-
-            // 调用 LLM，收集流式响应
-            let response = self.call_llm(request).await?;
-
-            // 累积 token 用量
-            self.usage.input_tokens += response.input_tokens;
-            self.usage.output_tokens += response.output_tokens;
-
-            // 收集内容块
-            let mut assistant_content: Vec<ContentBlock> = Vec::new();
-
-            if !response.text.is_empty() {
-                assistant_content.push(ContentBlock::text(&response.text));
-                total_text.push_str(&response.text);
-            }
-            if !response.thinking.is_empty() {
-                total_thinking.push_str(&response.thinking);
-            }
-            for tc in &response.tool_calls {
-                assistant_content.push(ContentBlock::tool_call(&tc.id, &tc.name, tc.input.clone()));
-            }
-
-            // 追加助手消息到会话
-            let assistant_entry = MessageEntry {
-                entry_type: "message".to_string(),
-                id: generate_id(),
-                parent_id: self.session.leaf_id().map(|s| s.to_string()),
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                role: "assistant".to_string(),
-                content: serde_json::json!(assistant_content
-                    .iter()
-                    .map(content_block_to_json)
-                    .collect::<Vec<_>>()),
-                model: Some(self.model.clone()),
-                stop_reason: response
-                    .stop_reason
-                    .map(|r| format!("{r:?}").to_lowercase()),
-                usage: None,
-            };
-            self.session
-                .append(pi_types::session::SessionEntry::Message(assistant_entry))
-                .await
-                .context("Failed to append assistant message")?;
-
-            // 如果没有工具调用，循环结束
-            if response.tool_calls.is_empty() {
-                // 扩展钩子：agent 完成
-                self.fire_agent_done(&total_text);
-                return Ok(AgentOutput {
-                    text: total_text,
-                    thinking: total_thinking,
-                    tool_calls: total_tool_calls,
-                    stop_reason: response.stop_reason,
-                    usage: self.usage.clone(),
-                });
-            }
-
-            // 执行工具调用
-            total_tool_calls += response.tool_calls.len();
-            // 执行工具调用（并行或顺序）
-            let tool_calls = &response.tool_calls;
-            let has_sequential = tool_calls.iter().any(|tc| {
-                self.tools.get_definition(&tc.name)
-                    .map(|d| matches!(d.execution_mode, ExecutionMode::Sequential))
-                    .unwrap_or(false)
-            });
-
-            let (tool_results, any_terminate) = if has_sequential || tool_calls.len() <= 1 {
-                self.execute_tools_sequential(tool_calls).await?
+            // 外层末尾：阻塞等待 followUp 消息
+            if let Some(ref mut rx) = self.follow_up_rx {
+                match rx.recv().await {
+                    Some(follow_up_msg) => {
+                        tracing::info!("[agent] FollowUp message received ({} chars)", follow_up_msg.len());
+                        let follow_up_entry = MessageEntry {
+                            entry_type: "message".to_string(),
+                            id: generate_id(),
+                            parent_id: self.session.leaf_id().map(|s| s.to_string()),
+                            timestamp: chrono::Utc::now().to_rfc3339(),
+                            role: "user".to_string(),
+                            content: serde_json::json!([{
+                                "type": "text",
+                                "text": follow_up_msg
+                            }]),
+                            model: None,
+                            stop_reason: None,
+                            usage: None,
+                        };
+                        self.session
+                            .append(pi_types::session::SessionEntry::Message(follow_up_entry))
+                            .await?;
+                        // continue outer loop — followUp 触发新一轮 ReAct
+                        continue;
+                    }
+                    None => {
+                        // Channel closed — no more followUps
+                        break;
+                    }
+                }
             } else {
-                self.execute_tools_parallel(tool_calls).await?
-            };
-
-            // 检查 terminate 信号：所有工具都请求终止时退出循环
-            if any_terminate {
-                tracing::info!("[agent] Tool requested terminate, stopping ReAct loop");
+                // 无 followUp 通道，直接退出
                 break;
             }
-
-            // 追加工具结果到会话
-            let tool_result_entry = MessageEntry {
-                entry_type: "message".to_string(),
-                id: generate_id(),
-                parent_id: self.session.leaf_id().map(|s| s.to_string()),
-                timestamp: chrono::Utc::now().to_rfc3339(),
-                role: "user".to_string(),
-                content: serde_json::json!(tool_results
-                    .iter()
-                    .map(content_block_to_json)
-                    .collect::<Vec<_>>()),
-                model: None,
-                stop_reason: None,
-                usage: None,
-            };
-            self.session
-                .append(pi_types::session::SessionEntry::Message(tool_result_entry))
-                .await
-                .context("Failed to append tool results")?;
-
-            // 继续循环 — LLM 将看到工具结果并决定下一步
         }
+
+        // 扩展钩子：agent 完成
+        self.fire_agent_done(&total_text);
 
         Ok(AgentOutput {
             text: if total_text.is_empty() {
@@ -840,4 +932,85 @@ fn generate_id() -> String {
         .unwrap()
         .as_nanos();
     format!("{:08x}", (t as u32) ^ ((t >> 32) as u32))
+}
+
+#[cfg(test)]
+mod steering_tests {
+    use super::*;
+    use pi_llm::driver::{LlmDriver, StreamResult};
+
+    /// A mock driver that responds with a fixed text (no tool calls).
+    struct MockTextDriver;
+
+    impl LlmDriver for MockTextDriver {
+        fn stream(
+            &self,
+            _req: CompletionRequest,
+        ) -> std::result::Result<StreamResult, anyhow::Error> {
+            let events: Vec<std::result::Result<StreamEvent, anyhow::Error>> = vec![
+                Ok(StreamEvent::TextDelta { text: "done".to_string() }),
+                Ok(StreamEvent::Stop { reason: Some(pi_types::message::StopReason::Stop) }),
+            ];
+            Ok(Box::pin(futures::stream::iter(events)))
+        }
+
+        fn name(&self) -> &str { "mock" }
+    }
+
+    #[tokio::test]
+    async fn steering_message_injected_mid_loop() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+        let session = JsonlSession::create(&path, "/test").await.unwrap();
+        let (_stx, _ftx, srx, frx) = AgentLoop::create_channels();
+        // Drop senders so channels close immediately
+        drop(_stx);
+        drop(_ftx);
+
+        let mut agent = AgentLoop::new(
+            session,
+            Box::new(MockTextDriver),
+            ToolRegistry::new(),
+            "test-model",
+        )
+        .with_api_key("test-key")
+        .with_channels(srx, frx);
+
+        // Without steering, the mock returns "done" immediately
+        let result = agent.run("hello").await.unwrap();
+        assert_eq!(result.text, "done");
+        assert_eq!(agent.session.entries().len(), 2); // user + assistant
+    }
+
+    #[tokio::test]
+    async fn follow_up_message_triggers_new_round() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+        let session = JsonlSession::create(&path, "/test").await.unwrap();
+        let (_stx, ftx, srx, frx) = AgentLoop::create_channels();
+
+        // Send a followUp after a short delay, then drop the sender
+        tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(100)).await;
+            let _ = ftx.send("follow-up question".to_string());
+            // ftx is moved into this closure, will be dropped when it ends
+        });
+        // Drop _stx too — we don't need it
+        drop(_stx);
+
+        let mut agent = AgentLoop::new(
+            session,
+            Box::new(MockTextDriver),
+            ToolRegistry::new(),
+            "test-model",
+        )
+        .with_api_key("test-key")
+        .with_channels(srx, frx);
+
+        let result = agent.run("hello").await.unwrap();
+        // Should have completed ("done") twice: initial + followUp
+        assert!(result.text.contains("done"));
+        // 4 entries: user(hello) + assistant(done) + user(follow-up) + assistant(done)
+        assert_eq!(agent.session.entries().len(), 4);
+    }
 }
