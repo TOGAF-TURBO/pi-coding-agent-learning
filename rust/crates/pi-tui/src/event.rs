@@ -9,6 +9,8 @@ pub enum Event {
     /// 键盘事件。
     Key(KeyEvent),
     /// 鼠标事件。
+    /// 鼠标事件（已禁用捕获，保留兼容）。
+    #[allow(dead_code)]
     Mouse(MouseEvent),
     /// 终端大小变化。
     Resize(u16, u16),
