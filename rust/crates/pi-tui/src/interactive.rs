@@ -462,15 +462,18 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
 
                             // 检查 slash 命令
                             if let Some(cmd) = crate::slash::parse(&text) {
+                                let mut slash_ctx = SlashContext {
+                                    state: &state,
+                                    cmd_tx: &cmd_tx,
+                                    session_dir: &session_dir,
+                                    overlay: &mut overlay,
+                                    overlay_kind: &mut overlay_kind,
+                                    extension_runner: &extension_runner,
+                                    cwd: std::path::Path::new(&cwd_for_slash),
+                                };
                                 let skill_content = handle_slash_command(
                                     cmd,
-                                    &state,
-                                    &cmd_tx,
-                                    &session_dir,
-                                    &mut overlay,
-                                    &mut overlay_kind,
-                                    &extension_runner,
-                                    std::path::Path::new(&cwd_for_slash),
+                                    &mut slash_ctx,
                                 )
                                 .await;
                                 if let Some(skill_text) = skill_content {
@@ -841,20 +844,25 @@ fn has_tool_results(content: &serde_json::Value) -> bool {
 }
 
 /// 处理 slash 命令。
+/// handle_slash_command 的上下文参数。
+struct SlashContext<'a> {
+    state: &'a Arc<AppState>,
+    cmd_tx: &'a tokio::sync::mpsc::UnboundedSender<Command>,
+    session_dir: &'a std::path::PathBuf,
+    overlay: &'a mut Option<crate::selector::Selector>,
+    overlay_kind: &'a mut Option<OverlayKind>,
+    extension_runner: &'a Option<Arc<pi_extensions::ExtensionRunner>>,
+    cwd: &'a std::path::Path,
+}
+
 async fn handle_slash_command(
     cmd: crate::slash::SlashCommand,
-    state: &Arc<AppState>,
-    cmd_tx: &tokio::sync::mpsc::UnboundedSender<Command>,
-    session_dir: &std::path::PathBuf,
-    overlay: &mut Option<crate::selector::Selector>,
-    overlay_kind: &mut Option<OverlayKind>,
-    extension_runner: &Option<Arc<pi_extensions::ExtensionRunner>>,
-    cwd: &std::path::Path,
+    ctx: &mut SlashContext<'_>,
 ) -> Option<String> {
     use crate::slash::SlashCommand;
 
     // 先检查扩展注册的命令
-    if let Some(runner) = extension_runner {
+    if let Some(runner) = ctx.extension_runner {
         if let SlashCommand::Unknown(ref name) = cmd {
             if let Some(entry) = runner.find_command(name) {
                 let args = match &cmd {
@@ -863,7 +871,7 @@ async fn handle_slash_command(
                 };
                 match (entry.handler)(args) {
                     Ok(()) => {}
-                    Err(e) => state.push_system(&format!("Command /{} failed: {}", name, e)),
+                    Err(e) => ctx.state.push_system(&format!("Command /{} failed: {}", name, e)),
                 }
                 return None;
             }
@@ -874,7 +882,7 @@ async fn handle_slash_command(
         SlashCommand::Help => {
             let mut help = crate::slash::help_text();
             // 追加扩展命令
-            if let Some(runner) = extension_runner {
+            if let Some(runner) = ctx.extension_runner {
                 let names = runner.command_names();
                 if !names.is_empty() {
                     help.push_str("\nExtension commands:");
@@ -886,49 +894,49 @@ async fn handle_slash_command(
                     }
                 }
             }
-            state.push_system(&help);
+            ctx.state.push_system(&help);
         }
         SlashCommand::Clear => {
-            state.entries.write().clear();
-            state.push_system("Chat cleared.");
+            ctx.state.entries.write().clear();
+            ctx.state.push_system("Chat cleared.");
         }
         SlashCommand::Compact => {
-            let _ = cmd_tx.send(Command::Compact);
+            let _ = ctx.cmd_tx.send(Command::Compact);
         }
         SlashCommand::Model(name) => {
             match name {
                 Some(model_name) => {
                     // 直接切换模型
                     {
-                        let mut f = state.footer.write();
+                        let mut f = ctx.state.footer.write();
                         f.model = model_name.clone();
                     }
-                    state.push_system(&format!("Model switched to {}", model_name));
+                    ctx.state.push_system(&format!("Model switched to {}", model_name));
                 }
                 None => {
                     // 打开模型选择器 — 通过触发 overlay
                     // 需要调用方来处理，简化版：显示提示
-                    state.push_system(
+                    ctx.state.push_system(
                         "Use Ctrl+P to open model picker, or /model <name> to switch directly.",
                     );
                 }
             }
         }
         SlashCommand::Branch => {
-            state.push_system("Branch: use /sessions to pick a session to branch from.");
+            ctx.state.push_system("Branch: use /sessions to pick a session to branch from.");
         }
         SlashCommand::Export(path) => {
-            let _ = cmd_tx.send(Command::Export { path });
+            let _ = ctx.cmd_tx.send(Command::Export { path });
         }
         SlashCommand::Usage => {
-            let f = state.footer.read();
+            let f = ctx.state.footer.read();
             let in_t = f.input_tokens;
             let out_t = f.output_tokens;
             let model = f.model.clone();
             drop(f);
             let cost = pi_agent::cost::estimate_cost(&model, in_t as u64, out_t as u64);
             let cost_str = pi_agent::cost::format_cost(cost);
-            state.push_system(&format!(
+            ctx.state.push_system(&format!(
                 "Token usage: {} input, {} output, {} total | Estimated cost: {}",
                 in_t,
                 out_t,
@@ -937,7 +945,7 @@ async fn handle_slash_command(
             ));
         }
         SlashCommand::Cost => {
-            let f = state.footer.read();
+            let f = ctx.state.footer.read();
             let in_t = f.input_tokens;
             let out_t = f.output_tokens;
             let model = f.model.clone();
@@ -945,7 +953,7 @@ async fn handle_slash_command(
             let pricing = pi_agent::cost::get_pricing(&model);
             let cost = pi_agent::cost::estimate_cost(&model, in_t as u64, out_t as u64);
             let cost_str = pi_agent::cost::format_cost(cost);
-            state.push_system(&format!(
+            ctx.state.push_system(&format!(
                 "Cost estimate for {}:\n  Input:  {} tokens @ ${}/M = {}\n  Output: {} tokens @ ${}/M = {}\n  Total: {}",
                 model,
                 in_t, pricing.input_per_m, pi_agent::cost::format_cost((in_t as f64 / 1_000_000.0) * pricing.input_per_m),
@@ -955,10 +963,10 @@ async fn handle_slash_command(
         }
         SlashCommand::Find(term) => {
             if term.is_empty() {
-                state.push_system("Usage: /find <search term>");
+                ctx.state.push_system("Usage: /find <search term>");
                 return None;
             }
-            let mgr = SessionManager::new(session_dir.to_path_buf());
+            let mgr = SessionManager::new(ctx.session_dir.to_path_buf());
             match mgr.list().await {
                 Ok(sessions) => {
                     let mut results = Vec::new();
@@ -977,24 +985,24 @@ async fn handle_slash_command(
                         }
                     }
                     if results.is_empty() {
-                        state.push_system(&format!("No sessions matching '{}'", term));
+                        ctx.state.push_system(&format!("No sessions matching '{}'", term));
                     } else {
-                        state.push_system(&format!(
+                        ctx.state.push_system(&format!(
                             "Found {} sessions:\n{}",
                             results.len(),
                             results.join("\n")
                         ));
                     }
                 }
-                Err(e) => state.push_system(&format!("Search failed: {e}")),
+                Err(e) => ctx.state.push_system(&format!("Search failed: {e}")),
             }
         }
         SlashCommand::Grep(term) => {
             if term.is_empty() {
-                state.push_system("Usage: /grep <search term>");
+                ctx.state.push_system("Usage: /grep <search term>");
                 return None;
             }
-            let entries = state.entries.read();
+            let entries = ctx.state.entries.read();
             let term_lower = term.to_lowercase();
             let mut matches = Vec::new();
             for (i, entry) in entries.iter().enumerate() {
@@ -1016,9 +1024,9 @@ async fn handle_slash_command(
                 }
             }
             if matches.is_empty() {
-                state.push_system(&format!("No messages matching '{}'", term));
+                ctx.state.push_system(&format!("No messages matching '{}'", term));
             } else {
-                state.push_system(&format!(
+                ctx.state.push_system(&format!(
                     "Found {} messages:\n{}",
                     matches.len(),
                     matches.join("\n")
@@ -1026,8 +1034,8 @@ async fn handle_slash_command(
             }
         }
         SlashCommand::NewSession => {
-            let _ = cmd_tx.send(Command::NewSession);
-            state.push_system("Starting new session...");
+            let _ = ctx.cmd_tx.send(Command::NewSession);
+            ctx.state.push_system("Starting new session...");
         }
         SlashCommand::Reload => {
             // 重载快捷键和主题
@@ -1037,14 +1045,14 @@ async fn handle_slash_command(
                 .unwrap_or_default();
             if kb_path.exists() {
                 let _kb = crate::keybinding::KeyBindings::load(&kb_path);
-                state.push_system("Reloaded keybindings");
+                ctx.state.push_system("Reloaded keybindings");
             } else {
-                state.push_system("No keybindings.json found");
+                ctx.state.push_system("No keybindings.json found");
             }
         }
         SlashCommand::Copy => {
             // 找到最后一条 assistant 消息
-            let entries = state.entries.read();
+            let entries = ctx.state.entries.read();
             let last_assistant = entries
                 .iter()
                 .rev()
@@ -1064,7 +1072,7 @@ async fn handle_slash_command(
                             let _ = stdin.write_all(text.as_bytes());
                         }
                         let _ = child.wait();
-                        state.push_system(&format!("Copied {} chars to clipboard", text.len()));
+                        ctx.state.push_system(&format!("Copied {} chars to clipboard", text.len()));
                     }
                     Err(_) => {
                         // xclip 不可用，尝试 pbcopy (macOS)
@@ -1078,13 +1086,13 @@ async fn handle_slash_command(
                                     let _ = stdin.write_all(text.as_bytes());
                                 }
                                 let _ = child.wait();
-                                state.push_system(&format!(
+                                ctx.state.push_system(&format!(
                                     "Copied {} chars to clipboard",
                                     text.len()
                                 ));
                             }
                             Err(_) => {
-                                state.push_system(
+                                ctx.state.push_system(
                                     "No clipboard tool found (install xclip or pbcopy)",
                                 );
                             }
@@ -1093,19 +1101,19 @@ async fn handle_slash_command(
                 }
             } else {
                 drop(entries);
-                state.push_system("No assistant message to copy");
+                ctx.state.push_system("No assistant message to copy");
             }
         }
         SlashCommand::Fork(at) => {
             if at.is_empty() {
-                state.push_system("Usage: /fork <message-id or index>");
+                ctx.state.push_system("Usage: /fork <message-id or index>");
             } else {
-                state.push_system(&format!("Fork at '{}' not yet implemented", at));
+                ctx.state.push_system(&format!("Fork at '{}' not yet implemented", at));
             }
         }
         SlashCommand::SessionInfo => {
-            let entries = state.entries.read();
-            let footer = state.footer.read();
+            let entries = ctx.state.entries.read();
+            let footer = ctx.state.footer.read();
             let user_count = entries
                 .iter()
                 .filter(|e| matches!(e.role, crate::app::ChatRole::User))
@@ -1119,7 +1127,7 @@ async fn handle_slash_command(
                 .filter(|e| matches!(e.role, crate::app::ChatRole::Tool { .. }))
                 .count();
             drop(entries);
-            state.push_system(&format!(
+            ctx.state.push_system(&format!(
                 "Session info:\n  Messages: {} user, {} assistant, {} tool\n  Model: {} ({})\n  Tokens: {} in, {} out\n  Total entries: {}",
                 user_count, assistant_count, tool_count,
                 footer.model, footer.provider,
@@ -1129,23 +1137,23 @@ async fn handle_slash_command(
         }
         SlashCommand::Name(name) => {
             if name.is_empty() {
-                state.push_system("Usage: /name <session-name>");
+                ctx.state.push_system("Usage: /name <session-name>");
             } else {
-                state.push_system(&format!("Session named: {}", name));
+                ctx.state.push_system(&format!("Session named: {}", name));
             }
         }
         SlashCommand::Import(path) => {
             if path.is_empty() {
-                state.push_system("Usage: /import <path-to-jsonl-file>");
+                ctx.state.push_system("Usage: /import <path-to-jsonl-file>");
             } else {
-                let _ = cmd_tx.send(Command::Import { path });
+                let _ = ctx.cmd_tx.send(Command::Import { path });
             }
         }
         SlashCommand::Clone => {
-            let _ = cmd_tx.send(Command::CloneSession);
+            let _ = ctx.cmd_tx.send(Command::CloneSession);
         }
         SlashCommand::Sessions => {
-            let mgr = SessionManager::new(session_dir);
+            let mgr = SessionManager::new(ctx.session_dir);
             if let Ok(sessions) = mgr.list().await {
                 let items: Vec<crate::selector::SelectItem> = sessions
                     .into_iter()
@@ -1156,17 +1164,17 @@ async fn handle_slash_command(
                     })
                     .collect();
                 if !items.is_empty() {
-                    *overlay = Some(crate::selector::Selector::new("Sessions", items));
-                    *overlay_kind = Some(OverlayKind::SessionPicker);
+                    *ctx.overlay = Some(crate::selector::Selector::new("Sessions", items));
+                    *ctx.overlay_kind = Some(OverlayKind::SessionPicker);
                 }
             }
         }
         SlashCommand::Quit => {
-            state.push_system("Use Ctrl+C to quit.");
+            ctx.state.push_system("Use Ctrl+C to quit.");
         }
         SlashCommand::Diff => {
             // 从最近工具调用收集 diff
-            let entries = state.entries.read();
+            let entries = ctx.state.entries.read();
             let mut diff_lines = Vec::new();
             for entry in entries.iter() {
                 if matches!(entry.role, crate::app::ChatRole::Tool { .. })
@@ -1178,33 +1186,33 @@ async fn handle_slash_command(
             }
             drop(entries);
             if diff_lines.is_empty() {
-                state.push_system("No diffs found in current session.");
+                ctx.state.push_system("No diffs found in current session.");
             } else {
-                let _ = cmd_tx.send(Command::ShowDiff {
+                let _ = ctx.cmd_tx.send(Command::ShowDiff {
                     diff_text: diff_lines.join("\n"),
                 });
             }
         }
         SlashCommand::Login => {
-            state.push_system("Use 'piso login' from terminal for GitHub Copilot OAuth.");
+            ctx.state.push_system("Use 'piso login' from terminal for GitHub Copilot OAuth.");
         }
         SlashCommand::Logout => {
-            state.push_system("Use 'piso logout' from terminal to clear OAuth token.");
+            ctx.state.push_system("Use 'piso logout' from terminal to clear OAuth token.");
         }
         SlashCommand::Skill(name) => {
-            match crate::slash::resolve_skill(&name, cwd) {
+            match crate::slash::resolve_skill(&name, ctx.cwd) {
                 Ok(content) => {
-                    state.push_system(&format!("Loaded skill: {}", name));
+                    ctx.state.push_system(&format!("Loaded skill: {}", name));
                     // Return the skill content as the actual user message
                     return Some(content);
                 }
                 Err(e) => {
-                    state.push_system(&format!("Skill error: {e}"));
+                    ctx.state.push_system(&format!("Skill error: {e}"));
                 }
             }
         }
         SlashCommand::Unknown(cmd) => {
-            state.push_system(&format!(
+            ctx.state.push_system(&format!(
                 "Unknown command: /{}. Type /help for available commands.",
                 cmd
             ));
