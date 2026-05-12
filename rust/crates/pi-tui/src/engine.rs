@@ -35,7 +35,11 @@ impl TuiEngine {
     /// 初始化 TUI：进入 alternate screen + raw mode。
     pub fn init() -> io::Result<Self> {
         enable_raw_mode()?;
-        crossterm::execute!(io::stderr(), EnterAlternateScreen)?;
+        crossterm::execute!(
+            io::stderr(),
+            EnterAlternateScreen,
+            crossterm::event::EnableMouseCapture
+        )?;
         let backend = CrosstermBackend::new(io::stderr());
         let terminal = Terminal::new(backend)?;
         let (event_tx, event_rx) = mpsc::unbounded_channel();
@@ -58,6 +62,11 @@ impl TuiEngine {
                                 continue;
                             }
                             if key_tx.send(Event::Key(key)).is_err() {
+                                break;
+                            }
+                        }
+                        Ok(CrosstermEvent::Mouse(mouse)) => {
+                            if key_tx.send(Event::Mouse(mouse)).is_err() {
                                 break;
                             }
                         }
@@ -124,6 +133,10 @@ impl Drop for TuiEngine {
         // 恢复终端标题
         let _ = std::io::Write::write_all(&mut std::io::stderr(), b"\x1b]0;\x07");
         let _ = disable_raw_mode();
-        let _ = crossterm::execute!(io::stderr(), LeaveAlternateScreen);
+        let _ = crossterm::execute!(
+            io::stderr(),
+            crossterm::event::DisableMouseCapture,
+            LeaveAlternateScreen
+        );
     }
 }
