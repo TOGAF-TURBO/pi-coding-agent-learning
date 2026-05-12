@@ -115,12 +115,14 @@ pub fn to_openai_messages(messages: &[Message]) -> Vec<Value> {
                             content_parts.push(json!(t.text));
                         }
                         ContentBlock::ToolUse(tc) => {
+                            // OpenAI API requires arguments as a JSON string, not raw object
+                            let args_str = serde_json::to_string(&tc.input).unwrap_or_else(|_| "{}".to_string());
                             tool_calls.push(json!({
                                 "id": tc.id,
                                 "type": "function",
                                 "function": {
                                     "name": tc.name,
-                                    "arguments": tc.input,
+                                    "arguments": args_str,
                                 }
                             }));
                         }

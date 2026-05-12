@@ -112,8 +112,8 @@ impl LlmDriver for OpenAiDriver {
 
             let status = response.status();
             if !status.is_success() {
-                let body = response.text().await.unwrap_or_default();
-                yield Err(anyhow!("OpenAI API error {status}: {body}"));
+                let err_body = response.text().await.unwrap_or_default();
+                yield Err(anyhow!("OpenAI API error {status}: {err_body}"));
                 return;
             }
 
