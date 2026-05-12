@@ -111,6 +111,7 @@ impl ToolExecutor for BashTool {
         // Unix: 创建新进程组，使 kill(-pgid) 能杀掉整个进程树
         #[cfg(unix)]
         {
+            #[allow(unused_imports)]
             use std::os::unix::process::CommandExt;
             unsafe {
                 cmd.pre_exec(|| {

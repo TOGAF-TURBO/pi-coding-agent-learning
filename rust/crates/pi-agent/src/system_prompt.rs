@@ -131,7 +131,7 @@ fn default_role_prompt(cwd: &str) -> String {
 - When you don't know something, say so. Don't make up information.
 "#
         , cwd = cwd
-        , date = chrono::Utc::now().format("%Y-%m-%d").to_string()
+        , date = chrono::Utc::now().format("%Y-%m-%d")
     )
 }
 
