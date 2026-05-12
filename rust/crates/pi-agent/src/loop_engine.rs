@@ -225,6 +225,27 @@ impl AgentLoop {
         self.session
     }
 
+    /// 热切换模型 — 更新 model 并记录 model_change 到 JSONL。
+    pub async fn set_model(&mut self, provider: Option<String>, model_id: String) {
+        let old = std::mem::replace(&mut self.model, model_id.clone());
+        tracing::info!("[agent] Model changed: {} -> {}", old, model_id);
+
+        let entry = pi_types::session::ModelChangeEntry {
+            entry_type: "model_change".to_string(),
+            id: generate_id(),
+            parent_id: self.session.leaf_id().map(|s| s.to_string()),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            provider,
+            model_id,
+        };
+        if let Err(e) = self.session
+            .append(pi_types::session::SessionEntry::ModelChange(entry))
+            .await
+        {
+            tracing::warn!("[agent] Failed to record model_change: {e}");
+        }
+    }
+
     /// 发送用户消息并运行 agent 循环直到完成。
     pub async fn run(&mut self, user_message: &str) -> Result<AgentOutput> {
         // 扩展钩子：agent 开始
@@ -925,7 +946,7 @@ fn parse_stop_reason(s: &str) -> Option<StopReason> {
     }
 }
 
-fn generate_id() -> String {
+pub(crate) fn generate_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let t = SystemTime::now()
         .duration_since(UNIX_EPOCH)

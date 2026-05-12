@@ -111,6 +111,22 @@ pub struct CustomEntry {
     pub content: serde_json::Value,
 }
 
+/// 模型切换事件 — 记录用户切换 provider/model 的时刻。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ModelChangeEntry {
+    #[serde(rename = "type")]
+    pub entry_type: String, // "model_change"
+    pub id: String,
+    #[serde(rename = "parentId")]
+    pub parent_id: Option<String>,
+    pub timestamp: String,
+    /// 新的 provider 名称。
+    pub provider: Option<String>,
+    /// 新的模型 ID。
+    #[serde(rename = "modelId")]
+    pub model_id: String,
+}
+
 /// 统一的会话条目枚举。
 /// 使用 untagged 以匹配 TS 版本的 flat JSON 格式。
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -120,6 +136,7 @@ pub enum SessionEntry {
     Compaction(CompactionEntry),
     Label(LabelEntry),
     Custom(CustomEntry),
+    ModelChange(ModelChangeEntry),
     /// 未知类型 — 保留原始 JSON 以实现前向兼容。
     Other(serde_json::Value),
 }
@@ -131,6 +148,7 @@ impl SessionEntry {
             Self::Compaction(e) => &e.id,
             Self::Label(e) => &e.id,
             Self::Custom(e) => &e.id,
+            Self::ModelChange(e) => &e.id,
             Self::Other(v) => v.get("id").and_then(|v| v.as_str()).unwrap_or(""),
         }
     }
@@ -141,6 +159,7 @@ impl SessionEntry {
             Self::Compaction(e) => e.parent_id.as_deref(),
             Self::Label(e) => e.parent_id.as_deref(),
             Self::Custom(e) => e.parent_id.as_deref(),
+            Self::ModelChange(e) => e.parent_id.as_deref(),
             Self::Other(v) => v.get("parentId").and_then(|v| v.as_str()),
         }
     }
@@ -151,6 +170,7 @@ impl SessionEntry {
             Self::Compaction(_) => "compaction",
             Self::Label(_) => "label",
             Self::Custom(e) => &e.custom_type,
+            Self::ModelChange(_) => "model_change",
             Self::Other(v) => v.get("type").and_then(|v| v.as_str()).unwrap_or("unknown"),
         }
     }
@@ -204,5 +224,18 @@ mod tests {
         // Round-trip preserves unknown fields
         let back = serde_json::to_string(&entry).unwrap();
         assert!(back.contains(r#""customField":42"#));
+    }
+
+    #[test]
+    fn model_change_entry_round_trip() {
+        let json = r#"{"type":"model_change","id":"abc123","parentId":"parent","timestamp":"2025-01-01T00:00:00Z","provider":"anthropic","modelId":"claude-3.5-sonnet"}"#;
+        let entry: SessionEntry = serde_json::from_str(json).unwrap();
+        match entry {
+            SessionEntry::ModelChange(e) => {
+                assert_eq!(e.model_id, "claude-3.5-sonnet");
+                assert_eq!(e.provider, Some("anthropic".to_string()));
+            }
+            _ => panic!("Expected ModelChange, got {:?}", entry.entry_type()),
+        }
     }
 }
