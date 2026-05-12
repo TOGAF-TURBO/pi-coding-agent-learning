@@ -7,7 +7,7 @@ use regex::Regex;
 use serde_json::Value;
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
+use pi_types::tool::{ExecutionMode, ToolDefinition, ToolExecutor, ToolResult};
 
 use crate::truncate::truncate_output;
 
@@ -51,6 +51,7 @@ impl ToolExecutor for GrepTool {
                 "required": ["pattern"]
             }),
             requires_approval: false,
+            execution_mode: ExecutionMode::default(),
         }
     }
 

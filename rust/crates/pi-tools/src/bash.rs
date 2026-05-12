@@ -15,7 +15,7 @@ use tokio::process::Command;
 use tokio::time::{timeout, Duration};
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
+use pi_types::tool::{ExecutionMode, ToolDefinition, ToolExecutor, ToolResult};
 
 use crate::truncate::truncate_output;
 
@@ -84,6 +84,7 @@ impl ToolExecutor for BashTool {
                 "required": ["command"]
             }),
             requires_approval: false,
+            execution_mode: ExecutionMode::default(),
         }
     }
 

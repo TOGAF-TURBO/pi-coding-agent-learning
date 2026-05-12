@@ -9,6 +9,17 @@ use serde_json::Value;
 /// 工具参数的 JSON Schema 定义。
 pub type ParameterSchema = Value;
 
+/// 工具执行模式。
+#[derive(Debug, Clone, Copy, Default, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum ExecutionMode {
+    /// 并行执行（默认）。
+    #[default]
+    Parallel,
+    /// 顺序执行。
+    Sequential,
+}
+
 /// 工具定义 — 描述一个 LLM 可调用的工具。
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ToolDefinition {
@@ -18,6 +29,9 @@ pub struct ToolDefinition {
     /// 是否需要用户批准才能执行。
     #[serde(default)]
     pub requires_approval: bool,
+    /// 执行模式：并行或顺序。
+    #[serde(default)]
+    pub execution_mode: ExecutionMode,
 }
 
 impl ToolDefinition {
@@ -122,6 +136,7 @@ mod tests {
             description: "test".to_string(),
             parameters: params,
             requires_approval: false,
+            execution_mode: Default::default(),
         }
     }
 

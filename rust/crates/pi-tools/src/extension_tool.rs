@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
+use pi_types::tool::{ExecutionMode, ToolDefinition, ToolExecutor, ToolResult};
 
 /// 扩展工具 — 从闭包适配到 ToolExecutor。
 #[allow(clippy::type_complexity)]
@@ -34,6 +34,7 @@ impl ExtensionTool {
                     "required": []
                 }),
                 requires_approval: false,
+            execution_mode: ExecutionMode::default(),
             },
             handler: Arc::new(handler),
         }

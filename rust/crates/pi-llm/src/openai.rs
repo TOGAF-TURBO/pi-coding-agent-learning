@@ -1,4 +1,3 @@
-//! OpenAI Chat Completions API 驱动。
 //!
 //! 覆盖 30+ 兼容 provider：OpenAI、GLM、DeepSeek、Groq、OpenRouter 等。
 //! 所有使用 `/chat/completions` 端点的 provider 共享此驱动。
@@ -510,6 +509,7 @@ mod tests {
                 description: "Execute a shell command".to_string(),
                 parameters: serde_json::json!({"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}),
                 requires_approval: false,
+            execution_mode: Default::default(),
             }],
             thinking_enabled: false,
             thinking_budget: None,

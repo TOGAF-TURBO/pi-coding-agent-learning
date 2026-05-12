@@ -22,7 +22,7 @@ use pi_types::message::{ContentBlock, Message, StopReason};
 
 use crate::system_prompt::SystemPromptBuilder;
 use pi_types::session::MessageEntry;
-use pi_types::tool::ToolResult;
+use pi_types::tool::{ExecutionMode, ToolResult};
 
 /// 可选的扩展运行时引用 — 注入到 AgentLoop 中以触发钩子。
 pub type ExtensionRunnerRef = Option<std::sync::Weak<pi_extensions::ExtensionRunner>>;
@@ -315,46 +315,19 @@ impl AgentLoop {
 
             // 执行工具调用
             total_tool_calls += response.tool_calls.len();
-            let mut tool_results: Vec<ContentBlock> = Vec::new();
-            let mut any_terminate = false;
+            // 执行工具调用（并行或顺序）
+            let tool_calls = &response.tool_calls;
+            let has_sequential = tool_calls.iter().any(|tc| {
+                self.tools.get_definition(&tc.name)
+                    .map(|d| matches!(d.execution_mode, ExecutionMode::Sequential))
+                    .unwrap_or(false)
+            });
 
-            for tc in &response.tool_calls {
-                self.emit(StreamEvent::ToolCallStart {
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    index: 0,
-                });
-
-                let result = self.execute_tool(&tc.name, tc.input.clone()).await;
-
-                let (output, is_error, terminated) = match result {
-                    Ok(r) => (r.output, r.is_error, r.terminate),
-                    Err(e) => (format!("Tool execution error: {e}"), true, false),
-                };
-
-                if terminated {
-                    any_terminate = true;
-                }
-
-                self.emit(StreamEvent::ToolCallEnd {
-                    index: 0,
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    input: tc.input.clone(),
-                });
-
-                self.emit(StreamEvent::ToolResult {
-                    id: tc.id.clone(),
-                    name: tc.name.clone(),
-                    output: output.clone(),
-                    is_error,
-                });
-
-                // 扩展钩子：工具调用完成
-                self.fire_tool_call_end(&tc.name, &output, is_error);
-
-                tool_results.push(ContentBlock::tool_result(&tc.id, &output, is_error));
-            }
+            let (tool_results, any_terminate) = if has_sequential || tool_calls.len() <= 1 {
+                self.execute_tools_sequential(tool_calls).await?
+            } else {
+                self.execute_tools_parallel(tool_calls).await?
+            };
 
             // 检查 terminate 信号：所有工具都请求终止时退出循环
             if any_terminate {
@@ -561,6 +534,96 @@ impl AgentLoop {
                 .map_err(|e| anyhow!("Tool '{}' execution failed: {}", name, e)),
             None => Err(anyhow!("Unknown tool: {name}")),
         }
+    }
+
+    /// 顺序执行工具调用。
+    async fn execute_tools_sequential(
+        &self,
+        tool_calls: &[ToolCallInfo],
+    ) -> Result<(Vec<ContentBlock>, bool)> {
+        let mut results = Vec::new();
+        let mut any_terminate = false;
+
+        for tc in tool_calls {
+            self.emit(StreamEvent::ToolCallStart {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                index: 0,
+            });
+
+            let result = self.execute_tool(&tc.name, tc.input.clone()).await;
+            let (output, is_error, terminated) = match result {
+                Ok(r) => (r.output, r.is_error, r.terminate),
+                Err(e) => (format!("Tool execution error: {e}"), true, false),
+            };
+            if terminated { any_terminate = true; }
+
+            self.emit(StreamEvent::ToolCallEnd {
+                index: 0,
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                input: tc.input.clone(),
+            });
+            self.emit(StreamEvent::ToolResult {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                output: output.clone(),
+                is_error,
+            });
+            self.fire_tool_call_end(&tc.name, &output, is_error);
+            results.push(ContentBlock::tool_result(&tc.id, &output, is_error));
+        }
+
+        Ok((results, any_terminate))
+    }
+
+    /// 并行执行工具调用。
+    async fn execute_tools_parallel(
+        &self,
+        tool_calls: &[ToolCallInfo],
+    ) -> Result<(Vec<ContentBlock>, bool)> {
+        // 阶段一：并发执行所有工具
+        let mut handles = Vec::with_capacity(tool_calls.len());
+        for tc in tool_calls {
+            self.emit(StreamEvent::ToolCallStart {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                index: 0,
+            });
+            handles.push(self.execute_tool(&tc.name, tc.input.clone()));
+        }
+
+        // 阶段二：等待所有结果
+        let outcomes = futures::future::join_all(handles).await;
+
+        // 阶段三：按原始顺序处理结果
+        let mut results = Vec::with_capacity(tool_calls.len());
+        let mut any_terminate = false;
+
+        for (tc, result) in tool_calls.iter().zip(outcomes) {
+            let (output, is_error, terminated) = match result {
+                Ok(r) => (r.output, r.is_error, r.terminate),
+                Err(e) => (format!("Tool execution error: {e}"), true, false),
+            };
+            if terminated { any_terminate = true; }
+
+            self.emit(StreamEvent::ToolCallEnd {
+                index: 0,
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                input: tc.input.clone(),
+            });
+            self.emit(StreamEvent::ToolResult {
+                id: tc.id.clone(),
+                name: tc.name.clone(),
+                output: output.clone(),
+                is_error,
+            });
+            self.fire_tool_call_end(&tc.name, &output, is_error);
+            results.push(ContentBlock::tool_result(&tc.id, &output, is_error));
+        }
+
+        Ok((results, any_terminate))
     }
 
     /// 触发扩展钩子：agent 开始。

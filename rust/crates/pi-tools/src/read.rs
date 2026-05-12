@@ -7,7 +7,7 @@ use serde_json::Value;
 use tokio::fs;
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
+use pi_types::tool::{ExecutionMode, ToolDefinition, ToolExecutor, ToolResult};
 
 use crate::truncate::truncate_output;
 
@@ -52,6 +52,7 @@ impl ToolExecutor for ReadTool {
                 "required": ["path"]
             }),
             requires_approval: false,
+            execution_mode: ExecutionMode::default(),
         }
     }
 

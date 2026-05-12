@@ -9,7 +9,7 @@ use serde_json::Value;
 use tokio::fs;
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
+use pi_types::tool::{ExecutionMode, ToolDefinition, ToolExecutor, ToolResult};
 
 /// Edit 工具执行器。
 pub struct EditTool;
@@ -51,6 +51,7 @@ impl ToolExecutor for EditTool {
                 "required": ["path", "oldText", "newText"]
             }),
             requires_approval: false,
+            execution_mode: ExecutionMode::default(),
         }
     }
 

@@ -89,6 +89,7 @@ mod tests {
                 description: "A test tool".to_string(),
                 parameters: serde_json::json!({}),
                 requires_approval: false,
+            execution_mode: Default::default(),
             }
         }
 

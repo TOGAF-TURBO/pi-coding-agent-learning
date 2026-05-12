@@ -7,7 +7,7 @@ use serde_json::Value;
 use tokio::fs;
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
+use pi_types::tool::{ExecutionMode, ToolDefinition, ToolExecutor, ToolResult};
 
 /// Ls 工具执行器。
 pub struct LsTool;
@@ -58,6 +58,7 @@ impl ToolExecutor for LsTool {
                 "required": []
             }),
             requires_approval: false,
+            execution_mode: ExecutionMode::default(),
         }
     }
 

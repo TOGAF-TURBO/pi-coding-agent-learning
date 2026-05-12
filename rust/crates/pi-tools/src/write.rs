@@ -7,7 +7,7 @@ use serde_json::Value;
 use tokio::fs;
 
 use pi_types::error::PiError;
-use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
+use pi_types::tool::{ExecutionMode, ToolDefinition, ToolExecutor, ToolResult};
 
 /// Write 工具执行器。
 pub struct WriteTool;
@@ -45,6 +45,7 @@ impl ToolExecutor for WriteTool {
                 "required": ["path", "content"]
             }),
             requires_approval: false,
+            execution_mode: ExecutionMode::default(),
         }
     }
 

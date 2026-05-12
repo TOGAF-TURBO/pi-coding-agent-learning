@@ -1375,8 +1375,10 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "async-trait",
+ "base64",
  "chrono",
  "globwalk",
+ "libc",
  "parking_lot",
  "pathdiff",
  "pi-types",
