@@ -22,6 +22,8 @@ use pi_types::message::{ContentBlock, Message, StopReason};
 
 use crate::system_prompt::SystemPromptBuilder;
 use pi_types::session::MessageEntry;
+#[cfg(test)]
+use pi_types::session::SessionEntry;
 use pi_types::tool::{ExecutionMode, ToolResult};
 
 /// 可选的扩展运行时引用 — 注入到 AgentLoop 中以触发钩子。
@@ -1045,5 +1047,125 @@ mod steering_tests {
         assert!(result.text.contains("done"));
         // 4 entries: user(hello) + assistant(done) + user(follow-up) + assistant(done)
         assert_eq!(agent.session.entries().len(), 4);
+    }
+
+    // ── build_messages tests ──
+
+    /// Helper: 创建一个带有预设消息的 AgentLoop。
+    fn agent_with_messages(messages: Vec<(&str, &str)>) -> AgentLoop {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let session = rt.block_on(async {
+            let mut session = JsonlSession::create(&path, "/test").await.unwrap();
+            for (i, (role, text)) in messages.iter().enumerate() {
+                let entry = SessionEntry::Message(pi_types::session::MessageEntry {
+                    entry_type: "message".to_string(),
+                    id: format!("m{}", i),
+                    parent_id: if i == 0 { None } else { Some(format!("m{}", i - 1)) },
+                    timestamp: "2025-01-01T00:00:00Z".to_string(),
+                    role: role.to_string(),
+                    content: serde_json::json!([{"type": "text", "text": text}]),
+                    model: None,
+                    stop_reason: None,
+                    usage: None,
+                });
+                session.append(entry).await.unwrap();
+            }
+            session
+        });
+
+        AgentLoop::new(session, Box::new(MockTextDriver), ToolRegistry::new(), "test-model")
+            .with_api_key("test-key")
+    }
+
+    #[test]
+    fn build_messages_basic_conversation() {
+        let agent = agent_with_messages(vec![
+            ("user", "hello"),
+            ("assistant", "hi there"),
+            ("user", "how are you"),
+        ]);
+        let messages = agent.build_messages().unwrap();
+        assert_eq!(messages.len(), 3);
+    }
+
+    #[test]
+    fn build_messages_skips_compaction_entries() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+        let rt = tokio::runtime::Runtime::new().unwrap();
+        let mut session = rt.block_on(async {
+            let mut s = JsonlSession::create(&path, "/test").await.unwrap();
+            // user + assistant + user
+            for (i, (role, text)) in [("user", "hi"), ("assistant", "hello"), ("user", "bye")].iter().enumerate() {
+                let entry = SessionEntry::Message(pi_types::session::MessageEntry {
+                    entry_type: "message".to_string(),
+                    id: format!("m{}", i),
+                    parent_id: if i == 0 { None } else { Some(format!("m{}", i - 1)) },
+                    timestamp: "2025-01-01T00:00:00Z".to_string(),
+                    role: role.to_string(),
+                    content: serde_json::json!([{"type": "text", "text": text}]),
+                    model: None,
+                    stop_reason: None,
+                    usage: None,
+                });
+                s.append(entry).await.unwrap();
+            }
+            // Archive m0..m1 via compaction
+            let compaction = SessionEntry::Compaction(pi_types::session::CompactionEntry {
+                entry_type: "compaction".to_string(),
+                id: "c0".to_string(),
+                parent_id: Some("m2".to_string()),
+                timestamp: "2025-01-01T00:00:03Z".to_string(),
+                summary: serde_json::json!({"text": "summary"}),
+                archived_range: Some(vec!["m0".to_string(), "m1".to_string()]),
+            });
+            s.append(compaction).await.unwrap();
+            s
+        });
+
+        let agent = AgentLoop::new(session, Box::new(MockTextDriver), ToolRegistry::new(), "test")
+            .with_api_key("k");
+        let messages = agent.build_messages().unwrap();
+        // Should skip m0, m1 (archived), only return m2
+        assert_eq!(messages.len(), 1);
+    }
+
+    #[test]
+    fn parse_content_blocks_text() {
+        let content = serde_json::json!([
+            {"type": "text", "text": "hello"},
+            {"type": "tool_result", "toolUseId": "t1", "content": "output"}
+        ]);
+        let blocks = parse_content_blocks(&content);
+        assert_eq!(blocks.len(), 2);
+    }
+
+    #[tokio::test]
+    async fn set_model_writes_jsonl() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("test.jsonl");
+        let session = JsonlSession::create(&path, "/test").await.unwrap();
+        let mut agent = AgentLoop::new(
+            session, Box::new(MockTextDriver), ToolRegistry::new(), "old-model",
+        ).with_api_key("key");
+
+        agent.set_model(Some("anthropic".to_string()), "claude-4".to_string()).await;
+        assert_eq!(agent.model, "claude-4");
+
+        // Check JSONL has model_change entry
+        let entries = agent.session.entries();
+        let found = entries.iter().any(|e| {
+            matches!(e, SessionEntry::ModelChange(m) if m.model_id == "claude-4")
+        });
+        assert!(found, "Expected ModelChange entry in JSONL");
+    }
+
+    #[test]
+    fn generate_id_deterministic_format() {
+        let id = generate_id();
+        assert_eq!(id.len(), 8);
+        assert!(id.chars().all(|c| c.is_ascii_hexdigit()));
     }
 }

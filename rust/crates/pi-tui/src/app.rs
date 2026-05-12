@@ -195,3 +195,83 @@ impl AppState {
         f.output_tokens = output;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn push_user_and_read() {
+        let state = AppState::new("test-model", "test-provider");
+        state.push_user("hello");
+        let entries = state.entries.read();
+        assert_eq!(entries.len(), 1);
+        assert!(matches!(entries[0].role, ChatRole::User));
+        assert_eq!(entries[0].content, "hello");
+    }
+
+    #[test]
+    fn push_assistant_delta_appends() {
+        let state = AppState::new("m", "p");
+        state.push_assistant_delta("hel");
+        state.push_assistant_delta("lo");
+        state.finish_assistant();
+        let entries = state.entries.read();
+        assert_eq!(entries.len(), 1);
+        assert_eq!(entries[0].content, "hello");
+        assert!(!entries[0].streaming);
+    }
+
+    #[test]
+    fn push_thinking_separate_from_assistant() {
+        let state = AppState::new("m", "p");
+        state.push_thinking_delta("hmm");
+        state.push_assistant_delta("answer");
+        let entries = state.entries.read();
+        assert_eq!(entries.len(), 2);
+        assert!(matches!(entries[0].role, ChatRole::Thinking));
+        assert!(matches!(entries[1].role, ChatRole::Assistant));
+    }
+
+    #[test]
+    fn push_tool_result() {
+        let state = AppState::new("m", "p");
+        state.push_tool_result("bash", "ok", false);
+        state.push_tool_result("edit", "fail", true);
+        let entries = state.entries.read();
+        assert_eq!(entries.len(), 2);
+        assert!(matches!(&entries[0].role, ChatRole::Tool { name, is_error } if name == "bash" && !is_error));
+        assert!(matches!(&entries[1].role, ChatRole::Tool { name, is_error } if name == "edit" && *is_error));
+    }
+
+    #[test]
+    fn set_state_tracks_duration() {
+        let state = AppState::new("m", "p");
+        state.set_state(AgentState::Thinking);
+        std::thread::sleep(std::time::Duration::from_millis(50));
+        state.set_state(AgentState::Idle);
+        assert!(state.footer.read().duration_secs >= 0);
+    }
+
+    #[test]
+    fn set_usage_and_context_tokens() {
+        let state = AppState::new("m", "p");
+        state.set_usage(100, 200);
+        assert_eq!(state.footer.read().input_tokens, 100);
+        assert_eq!(state.footer.read().output_tokens, 200);
+        state.set_context_tokens(5000);
+        assert_eq!(state.footer.read().context_tokens, 5000);
+    }
+
+    #[test]
+    fn chat_role_display() {
+        assert_eq!(format!("{}", ChatRole::User), "You");
+        assert_eq!(format!("{}", ChatRole::Assistant), "Assistant");
+        assert_eq!(format!("{}", ChatRole::Thinking), "Thinking");
+        assert_eq!(format!("{}", ChatRole::System), "System");
+        assert_eq!(
+            format!("{}", ChatRole::Tool { name: "bash".into(), is_error: false }),
+            "bash"
+        );
+    }
+}

@@ -13,3 +13,16 @@ use crate::runner::ExtensionRunner;
 pub fn create_runner(hooks: HookRegistry) -> ExtensionRunner {
     ExtensionRunner::new(hooks)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn create_runner_from_hooks() {
+        let mut hooks = HookRegistry::default();
+        hooks.on_agent_start.push(Box::new(|_| {}));
+        let runner = create_runner(hooks);
+        assert_eq!(runner.tool_names().len(), 0);
+    }
+}
