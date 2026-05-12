@@ -81,6 +81,8 @@ pub struct InteractiveConfig {
     pub keybindings: KeyBindings,
     /// 扩展运行时（可选）。
     pub extension_runner: Option<Arc<pi_extensions::ExtensionRunner>>,
+    /// 主题。
+    pub theme: crate::theme::Theme,
 }
 
 /// Overlay 类型（用于区分回调行为）。
@@ -104,6 +106,7 @@ pub struct AgentContext {
 /// 运行交互模式。
 pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
     let state = Arc::new(AppState::new(&cfg.model, &cfg.provider));
+    let theme = cfg.theme.clone();
 
     // Git 状态检测
     let git_status = crate::git::detect(&cfg.cwd);
@@ -339,6 +342,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                 &git_display,
                 &hints,
                 tick,
+                &theme,
             );
 
             // 渲染 overlay（如果有）
@@ -1207,6 +1211,28 @@ async fn handle_slash_command(
         SlashCommand::Logout => {
             ctx.state
                 .push_system("Use 'piso logout' from terminal to clear OAuth token.");
+        }
+        SlashCommand::Theme(name) => {
+            match name {
+                Some(n) => {
+                    if let Some(_new_theme) = crate::theme::Theme::load_by_name(&n) {
+                        // Note: theme change takes effect next render cycle
+                        ctx.state
+                            .push_system(&format!("Theme: {} (restart to apply)", n));
+                    } else {
+                        let available = crate::theme::Theme::list_available().join(", ");
+                        ctx.state.push_system(&format!(
+                            "Theme '{}' not found. Available: {}",
+                            n, available
+                        ));
+                    }
+                }
+                None => {
+                    let available = crate::theme::Theme::list_available().join(", ");
+                    ctx.state
+                        .push_system(&format!("Available themes: {}", available));
+                }
+            }
         }
         SlashCommand::Skill(name) => {
             match crate::slash::resolve_skill(&name, ctx.cwd) {

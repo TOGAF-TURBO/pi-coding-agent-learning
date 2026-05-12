@@ -60,6 +60,8 @@ pub enum SlashCommand {
     Login,
     /// 清除缓存的 OAuth token。
     Logout,
+    /// 切换主题。
+    Theme(Option<String>),
     /// 退出。
     Quit,
     /// 未知命令。
@@ -133,6 +135,7 @@ pub fn parse(input: &str) -> Option<SlashCommand> {
         "diff" | "d" => SlashCommand::Diff,
         "login" => SlashCommand::Login,
         "logout" => SlashCommand::Logout,
+        "theme" | "t" => SlashCommand::Theme(arg),
         "quit" | "q" | "exit" => SlashCommand::Quit,
         other if other.starts_with("skill:") => {
             let skill_name = other.strip_prefix("skill:").unwrap_or("").to_string();
@@ -173,6 +176,7 @@ pub fn help_text() -> String {
         "  /diff, /d           Open diff viewer",
         "  /login              GitHub Copilot OAuth login",
         "  /logout             Clear cached OAuth token",
+        "  /theme, /t [name]   Switch theme (no arg = list available)",
         "  /quit, /q           Quit piso",
     ]
     .join("\n")

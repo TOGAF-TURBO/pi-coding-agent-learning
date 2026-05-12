@@ -494,6 +494,30 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         .unwrap_or_else(|| cwd.join("keybindings.json"));
     let keybindings = pi_tui::KeyBindings::load(&kb_path);
 
+    // 加载主题
+    let theme_name = cli
+        .theme
+        .as_ref()
+        .and_then(|v| v.first())
+        .map(|s| s.as_str());
+    let theme = match theme_name {
+        Some(name) => pi_tui::Theme::load_by_name(name).unwrap_or_else(|| {
+            eprintln!("Theme '{}' not found, using dark", name);
+            pi_tui::Theme::dark()
+        }),
+        None => {
+            // 尝试从 config 加载默认主题
+            let theme_path = config::config_dir()
+                .map(|d| d.join("theme.json"))
+                .unwrap_or_else(|| cwd.join("theme.json"));
+            if theme_path.exists() {
+                pi_tui::Theme::load(&theme_path)
+            } else {
+                pi_tui::Theme::dark()
+            }
+        }
+    };
+
     let tui_system_prompt = {
         let provider_display = provider_display_name(&provider);
         let md = format!("{} ({})", &model, &provider_display);
@@ -514,6 +538,7 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
         available_models,
         keybindings,
         extension_runner: None,
+        theme,
     };
 
     pi_tui::run_interactive(tui_cfg).await

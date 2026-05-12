@@ -19,32 +19,126 @@ use crate::markdown::render_markdown_truncated;
 /// 工具结果最大显示行数。
 const MAX_TOOL_LINES: usize = 8;
 
-/// 主题色彩常量（与 TS dark.json 对齐）。
-pub(crate) mod colors {
-    use ratatui::style::Color;
+/// 主题驱动的颜色解析器 — 从 Theme 对象提取 ratatui Color。
+///
+/// 提供零参数构造函数（使用默认 dark 主题），
+/// 以及 from_theme() 构造函数（从活跃主题解析所有颜色）。
+pub struct ThemeColors {
+    pub accent: Color,
+    pub border: Color,
+    pub border_accent: Color,
+    pub success: Color,
+    pub error: Color,
+    pub warning: Color,
+    pub muted: Color,
+    pub dim: Color,
+    pub dark_gray: Color,
+    pub text: Color,
+    pub text_muted: Color,
+    pub background: Color,
+    pub background_panel: Color,
+    pub border_subtle: Color,
+    pub user_msg_fg: Color,
+    pub assistant_fg: Color,
+    pub tool_fg: Color,
+    pub heading: Color,
+    pub code: Color,
+    pub inline_code: Color,
+    pub link: Color,
+    pub syntax_keyword: Color,
+    pub syntax_string: Color,
+    pub syntax_comment: Color,
+    pub diff_added: Color,
+    pub diff_removed: Color,
+    /// 灰阶梯度（4 级）。
+    pub grays: [Color; 4],
+    /// 用户消息背景色。
+    pub user_msg_bg: Color,
+    /// 工具成功背景色。
+    pub tool_success_bg: Color,
+    /// 工具错误背景色。
+    pub tool_error_bg: Color,
+    /// 思考文字色。
+    pub thinking: Color,
+}
 
-    // 精确色值来自 TS dark.json vars
-    pub const ACCENT: Color = Color::Rgb(138, 190, 183); // accent
-    pub const BORDER: Color = Color::Rgb(95, 135, 255); // blue
-    pub const BORDER_ACCENT: Color = Color::Rgb(0, 215, 255); // cyan
-    pub const SUCCESS: Color = Color::Rgb(181, 189, 104); // green
-    pub const ERROR: Color = Color::Rgb(204, 102, 102); // red
-    pub const WARNING: Color = Color::Rgb(255, 255, 0); // yellow
-    pub const MUTED: Color = Color::Rgb(128, 128, 128); // gray
-    pub const DIM: Color = Color::Rgb(102, 102, 102); // dimGray
-    pub const DARK_GRAY: Color = Color::Rgb(80, 80, 80); // darkGray
-    #[allow(dead_code)]
-    pub const MD_HEADING: Color = Color::Rgb(240, 198, 116); // #f0c674
-    #[allow(dead_code)]
-    pub const MD_LINK: Color = Color::Rgb(129, 162, 190); // #81a2be
-    #[allow(dead_code)]
-    pub const MD_CODE: Color = Color::Rgb(138, 190, 183); // accent
-    pub const USER_MSG_BG: Color = Color::Rgb(52, 53, 65); // #343541
-    #[allow(dead_code)]
-    pub const TOOL_PENDING_BG: Color = Color::Rgb(40, 40, 50); // #282832
-    pub const TOOL_SUCCESS_BG: Color = Color::Rgb(40, 50, 40); // #283228
-    pub const TOOL_ERROR_BG: Color = Color::Rgb(60, 40, 40); // #3c2828
-    pub const THINKING: Color = Color::Rgb(128, 128, 128); // gray
+impl ThemeColors {
+    /// 从 Theme 对象解析所有颜色。
+    pub fn from_theme(t: &crate::theme::Theme) -> Self {
+        let grays_vec = t.gray_steps(4);
+        let grays = [grays_vec[0], grays_vec[1], grays_vec[2], grays_vec[3]];
+
+        let bg = t.resolve(&t.background);
+        let success = t.resolve(&t.success);
+        let error = t.resolve(&t.error);
+
+        // 计算用户消息背景色 = 背景色 + success 色微混
+        let user_msg_bg = tint(bg, success, 0.08);
+        let tool_success_bg = tint(bg, success, 0.12);
+        let tool_error_bg = tint(bg, error, 0.12);
+
+        Self {
+            accent: t.resolve(&t.accent),
+            border: t.resolve(&t.border),
+            border_accent: t.resolve(&t.primary),
+            success,
+            error,
+            warning: t.resolve(&t.warning),
+            muted: t.resolve(&t.text_muted),
+            dim: t.resolve(&t.text_muted),
+            dark_gray: grays[1],
+            text: t.resolve(&t.text),
+            text_muted: t.resolve(&t.text_muted),
+            background: bg,
+            background_panel: t.resolve(&t.background_panel),
+            border_subtle: t.resolve(&t.border_subtle),
+            user_msg_fg: t.resolve(&t.user_msg),
+            assistant_fg: t.resolve(&t.assistant_msg),
+            tool_fg: t.resolve(&t.tool_msg),
+            heading: t.resolve(&t.heading_fg),
+            code: t.resolve(&t.code_fg),
+            inline_code: t.resolve(&t.inline_code_fg),
+            link: t.resolve(&t.link_fg),
+            syntax_keyword: t.resolve(&t.syntax_keyword),
+            syntax_string: t.resolve(&t.syntax_string),
+            syntax_comment: t.resolve(&t.syntax_comment),
+            diff_added: t.resolve(&t.diff_added),
+            diff_removed: t.resolve(&t.diff_removed),
+            grays,
+            user_msg_bg,
+            tool_success_bg,
+            tool_error_bg,
+            thinking: t.resolve(&t.text_muted),
+        }
+    }
+}
+
+/// 颜色混合：base + overlay * alpha。
+fn tint(base: Color, overlay: Color, alpha: f64) -> Color {
+    let (br, bg, bb) = to_rgb(base);
+    let (or, og, ob) = to_rgb(overlay);
+    let r = (br + (or - br) * alpha).round().clamp(0.0, 255.0) as u8;
+    let g = (bg + (og - bg) * alpha).round().clamp(0.0, 255.0) as u8;
+    let b = (bb + (ob - bb) * alpha).round().clamp(0.0, 255.0) as u8;
+    Color::Rgb(r, g, b)
+}
+
+/// 将 ratatui Color 提取为 (r, g, b) f64。
+fn to_rgb(c: Color) -> (f64, f64, f64) {
+    match c {
+        Color::Rgb(r, g, b) => (r as f64, g as f64, b as f64),
+        Color::Black => (0.0, 0.0, 0.0),
+        Color::White => (255.0, 255.0, 255.0),
+        Color::Red => (255.0, 0.0, 0.0),
+        Color::Green => (0.0, 255.0, 0.0),
+        Color::Blue => (0.0, 0.0, 255.0),
+        Color::Cyan => (0.0, 255.0, 255.0),
+        Color::Magenta => (255.0, 0.0, 255.0),
+        Color::Yellow => (255.0, 255.0, 0.0),
+        Color::DarkGray => (80.0, 80.0, 80.0),
+        Color::Gray => (128.0, 128.0, 128.0),
+        _ => (128.0, 128.0, 128.0),
+    }
 }
 
 /// Braille spinner 帧序列（与 TS 版 DEFAULT_FRAMES 一致）。
@@ -119,6 +213,7 @@ pub fn render_chat(
     state: &AppState,
     scroll_offset: usize,
     tick: usize,
+    colors: &ThemeColors,
 ) {
     let entries = state.entries.read();
     let content_width = area.width.saturating_sub(4) as usize;
@@ -132,13 +227,15 @@ pub fn render_chat(
                 for line in &wrapped {
                     lines.push(Line::from(Span::styled(
                         format!(" {}", line),
-                        Style::default().bg(colors::USER_MSG_BG),
+                        Style::default()
+                            .bg(colors.user_msg_bg)
+                            .fg(colors.user_msg_fg),
                     )));
                 }
-                // 填充背景色到宽度（确保整行有背景色）
+                // 填充背景色到宽度
                 lines.push(Line::from(Span::styled(
                     " ".repeat(content_width),
-                    Style::default().bg(colors::USER_MSG_BG),
+                    Style::default().bg(colors.user_msg_bg),
                 )));
             }
             ChatRole::Assistant => {
@@ -161,33 +258,33 @@ pub fn render_chat(
                 // 思考内容：暗灰 + 斜体
                 lines.push(Line::from(Span::styled(
                     " ┊ Thinking",
-                    Style::default().fg(colors::DARK_GRAY),
+                    Style::default().fg(colors.dark_gray),
                 )));
                 let wrapped = wrap_text(&entry.content, content_width);
                 for line in &wrapped {
                     lines.push(Line::from(Span::styled(
                         format!(" ┊ {}", line),
-                        Style::default().fg(colors::THINKING),
+                        Style::default().fg(colors.thinking),
                     )));
                 }
             }
             ChatRole::System => {
                 lines.push(Line::from(Span::styled(
                     format!(" ℹ {}", &entry.content),
-                    Style::default().fg(colors::WARNING),
+                    Style::default().fg(colors.warning),
                 )));
             }
             ChatRole::Tool { name, is_error } => {
                 let bg = if *is_error {
-                    colors::TOOL_ERROR_BG
+                    colors.tool_error_bg
                 } else {
-                    colors::TOOL_SUCCESS_BG
+                    colors.tool_success_bg
                 };
                 let icon = if *is_error { "✗" } else { "✔" };
                 let name_color = if *is_error {
-                    colors::ERROR
+                    colors.error
                 } else {
-                    colors::SUCCESS
+                    colors.success
                 };
 
                 // 工具头部
@@ -213,9 +310,9 @@ pub fn render_chat(
                 };
 
                 let output_style = if *is_error {
-                    Style::default().fg(colors::ERROR)
+                    Style::default().fg(colors.error)
                 } else {
-                    Style::default().fg(colors::MUTED)
+                    Style::default().fg(colors.muted)
                 };
                 for line in &display_lines {
                     lines.push(Line::from(Span::styled(format!(" {}", line), output_style)));
@@ -233,19 +330,19 @@ pub fn render_chat(
         AgentState::Thinking => {
             lines.push(Line::from(Span::styled(
                 format!(" {} Thinking...", frame),
-                Style::default().fg(colors::WARNING),
+                Style::default().fg(colors.warning),
             )));
         }
         AgentState::Streaming => {
             lines.push(Line::from(Span::styled(
                 format!(" {} Streaming...", frame),
-                Style::default().fg(colors::BORDER_ACCENT),
+                Style::default().fg(colors.border_accent),
             )));
         }
         AgentState::ToolRunning { name } => {
             lines.push(Line::from(Span::styled(
                 format!(" {} Running {}...", frame, name),
-                Style::default().fg(colors::ACCENT),
+                Style::default().fg(colors.accent),
             )));
         }
         _ => {}
@@ -261,21 +358,21 @@ pub fn render_chat(
 }
 
 /// 渲染 status 区域。
-pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
+pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState, colors: &ThemeColors) {
     let footer = state.footer.read();
 
     // 左侧：状态 + token + context
     let (state_text, state_color) = match &footer.state {
-        AgentState::Idle => ("●", colors::SUCCESS),
-        AgentState::Thinking => ("◌", colors::WARNING),
-        AgentState::Streaming => ("●", colors::BORDER_ACCENT),
+        AgentState::Idle => ("●", colors.success),
+        AgentState::Thinking => ("◌", colors.warning),
+        AgentState::Streaming => ("●", colors.border_accent),
         AgentState::ToolRunning { name } => {
             let display = if name.len() > 16 {
                 format!("{}…", &name[..14])
             } else {
                 name.clone()
             };
-            (leak_str(format!("▶ {}", display)), colors::ACCENT)
+            (leak_str(format!("▶ {}", display)), colors.accent)
         }
         AgentState::Error(e) => {
             let display = if e.len() > 30 {
@@ -283,7 +380,7 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
             } else {
                 format!("✗ {}", e)
             };
-            (leak_str(display), colors::ERROR)
+            (leak_str(display), colors.error)
         }
     };
 
@@ -302,7 +399,7 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
                 format_tokens(footer.input_tokens),
                 format_tokens(footer.output_tokens)
             ),
-            Style::default().fg(colors::DIM),
+            Style::default().fg(colors.dim),
         ));
     }
 
@@ -311,11 +408,11 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         let pct = (footer.context_tokens as f64 / 128_000.0 * 100.0) as u32;
         let pct = pct.min(100);
         let ctx_color = if pct > 80 {
-            colors::ERROR
+            colors.error
         } else if pct > 50 {
-            colors::WARNING
+            colors.warning
         } else {
-            colors::DIM
+            colors.dim
         };
         left_parts.push(Span::styled(
             format!("  ctx:{}%", pct),
@@ -345,7 +442,7 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         String::new()
     };
     if !elapsed.is_empty() {
-        left_parts.push(Span::styled(elapsed, Style::default().fg(colors::DIM)));
+        left_parts.push(Span::styled(elapsed, Style::default().fg(colors.dim)));
     }
 
     let line = Line::from(left_parts);
@@ -361,11 +458,12 @@ pub fn render_editor(
     cursor_pos: usize,
     cursor: bool,
     is_running: bool,
+    colors: &ThemeColors,
 ) {
     let border_color = if is_running {
-        colors::WARNING
+        colors.warning
     } else {
-        colors::BORDER
+        colors.border
     };
 
     if input.is_empty() {
@@ -375,7 +473,7 @@ pub fn render_editor(
             "Type a message... (Enter to send, Shift+Enter for newline)"
         };
         let para = Paragraph::new(hint)
-            .style(Style::default().fg(colors::DARK_GRAY))
+            .style(Style::default().fg(colors.dark_gray))
             .block(
                 Block::default()
                     .borders(Borders::TOP)
@@ -429,6 +527,7 @@ pub fn render_editor(
 }
 
 /// 渲染 footer 区域 — 模型信息 + 快捷键提示。
+#[allow(clippy::too_many_arguments)]
 pub fn render_footer(
     f: &mut ratatui::Frame,
     area: Rect,
@@ -437,20 +536,21 @@ pub fn render_footer(
     provider: &str,
     git: &str,
     hints: &[(&'static str, String)],
+    colors: &ThemeColors,
 ) {
     let mut spans = Vec::new();
 
     // 左侧：模型信息
     spans.push(Span::styled(
         format!(" {} ({})", model, provider),
-        Style::default().fg(colors::DIM),
+        Style::default().fg(colors.dim),
     ));
 
     // Git 分支
     if !git.is_empty() {
         spans.push(Span::styled(
             format!(" {}", git),
-            Style::default().fg(colors::ACCENT),
+            Style::default().fg(colors.accent),
         ));
     }
 
@@ -463,11 +563,11 @@ pub fn render_footer(
             spans.push(Span::styled(
                 text.clone(),
                 Style::default()
-                    .fg(colors::BORDER_ACCENT)
+                    .fg(colors.border_accent)
                     .add_modifier(Modifier::BOLD),
             ));
         } else {
-            spans.push(Span::styled(text.clone(), Style::default().fg(colors::DIM)));
+            spans.push(Span::styled(text.clone(), Style::default().fg(colors.dim)));
         }
     }
 
@@ -488,16 +588,26 @@ pub fn render_all(
     git: &str,
     footer_hints: &[(&'static str, String)],
     tick: usize,
+    theme: &crate::theme::Theme,
 ) {
+    let colors = ThemeColors::from_theme(theme);
     let footer = state.footer.read();
     let model = footer.model.clone();
     let provider = footer.provider.clone();
     let is_running = !matches!(&footer.state, AgentState::Idle);
     drop(footer);
 
-    render_chat(f, regions.chat, state, scroll_offset, tick);
-    render_status(f, regions.status, state);
-    render_editor(f, regions.editor, input, cursor_pos, true, is_running);
+    render_chat(f, regions.chat, state, scroll_offset, tick, &colors);
+    render_status(f, regions.status, state, &colors);
+    render_editor(
+        f,
+        regions.editor,
+        input,
+        cursor_pos,
+        true,
+        is_running,
+        &colors,
+    );
     render_footer(
         f,
         regions.footer,
@@ -506,6 +616,7 @@ pub fn render_all(
         &provider,
         git,
         footer_hints,
+        &colors,
     );
 }
 
