@@ -222,17 +222,20 @@ pub fn render_chat(
     for entry in entries.iter() {
         match &entry.role {
             ChatRole::User => {
-                // 用户消息：带背景色的块
+                // 用户消息：带背景色的块，填充到终端宽度
                 let wrapped = wrap_text(&entry.content, content_width);
                 for line in &wrapped {
+                    // 计算填充空格数，确保背景色延伸到区域右边缘
+                    let line_width: usize = line.chars().map(unicode_width).sum();
+                    let padding = content_width.saturating_sub(line_width + 1); // +1 for leading space
                     lines.push(Line::from(Span::styled(
-                        format!(" {}", line),
+                        format!(" {}{}", line, " ".repeat(padding)),
                         Style::default()
                             .bg(colors.user_msg_bg)
                             .fg(colors.user_msg_fg),
                     )));
                 }
-                // 填充背景色到宽度
+                // 底部额外填充行
                 lines.push(Line::from(Span::styled(
                     " ".repeat(content_width),
                     Style::default().bg(colors.user_msg_bg),
