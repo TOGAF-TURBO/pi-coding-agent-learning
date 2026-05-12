@@ -36,12 +36,10 @@ impl CloudflareDriver {
             .map_err(|_| anyhow::anyhow!("CLOUDFLARE_ACCOUNT_ID not set"))?;
 
         let base = match std::env::var("CLOUDFLARE_GATEWAY_ID") {
-            Ok(gateway_id) => format!(
-                "https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai"
-            ),
-            Err(_) => format!(
-                "https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"
-            ),
+            Ok(gateway_id) => {
+                format!("https://gateway.ai.cloudflare.com/v1/{account_id}/{gateway_id}/openai")
+            }
+            Err(_) => format!("https://api.cloudflare.com/client/v4/accounts/{account_id}/ai/v1"),
         };
 
         Ok(base)
@@ -150,7 +148,17 @@ mod tests {
     #[test]
     fn build_url_no_account() {
         std::env::remove_var("CLOUDFLARE_ACCOUNT_ID");
-        let req = CompletionRequest { model: "test".to_string(), system_prompt: None, messages: vec![], tools: vec![], thinking_enabled: false, thinking_budget: None, max_tokens: 4096, api_key: String::new(), base_url: None };
+        let req = CompletionRequest {
+            model: "test".to_string(),
+            system_prompt: None,
+            messages: vec![],
+            tools: vec![],
+            thinking_enabled: false,
+            thinking_budget: None,
+            max_tokens: 4096,
+            api_key: String::new(),
+            base_url: None,
+        };
         let result = CloudflareDriver::build_url(&req);
         assert!(result.is_err());
     }
@@ -159,7 +167,17 @@ mod tests {
     fn build_url_direct() {
         std::env::set_var("CLOUDFLARE_ACCOUNT_ID", "test-acc-123");
         std::env::remove_var("CLOUDFLARE_GATEWAY_ID");
-        let req = CompletionRequest { model: "test".to_string(), system_prompt: None, messages: vec![], tools: vec![], thinking_enabled: false, thinking_budget: None, max_tokens: 4096, api_key: String::new(), base_url: None };
+        let req = CompletionRequest {
+            model: "test".to_string(),
+            system_prompt: None,
+            messages: vec![],
+            tools: vec![],
+            thinking_enabled: false,
+            thinking_budget: None,
+            max_tokens: 4096,
+            api_key: String::new(),
+            base_url: None,
+        };
         let url = CloudflareDriver::build_url(&req).unwrap();
         assert!(url.contains("api.cloudflare.com"));
         assert!(url.contains("test-acc-123"));
@@ -171,7 +189,17 @@ mod tests {
     fn build_url_gateway() {
         std::env::set_var("CLOUDFLARE_ACCOUNT_ID", "test-acc-123");
         std::env::set_var("CLOUDFLARE_GATEWAY_ID", "my-gw");
-        let req = CompletionRequest { model: "test".to_string(), system_prompt: None, messages: vec![], tools: vec![], thinking_enabled: false, thinking_budget: None, max_tokens: 4096, api_key: String::new(), base_url: None };
+        let req = CompletionRequest {
+            model: "test".to_string(),
+            system_prompt: None,
+            messages: vec![],
+            tools: vec![],
+            thinking_enabled: false,
+            thinking_budget: None,
+            max_tokens: 4096,
+            api_key: String::new(),
+            base_url: None,
+        };
         let url = CloudflareDriver::build_url(&req).unwrap();
         assert!(url.contains("gateway.ai.cloudflare.com"));
         assert!(url.contains("my-gw"));

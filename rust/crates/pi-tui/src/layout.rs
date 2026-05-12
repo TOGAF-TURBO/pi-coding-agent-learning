@@ -82,8 +82,10 @@ mod tests {
         // chat gets the rest
         assert!(regions.chat.height >= 15);
         // total must equal area height
-        let total =
-            regions.chat.height + regions.status.height + regions.editor.height + regions.footer.height;
+        let total = regions.chat.height
+            + regions.status.height
+            + regions.editor.height
+            + regions.footer.height;
         assert_eq!(total, 24);
     }
 

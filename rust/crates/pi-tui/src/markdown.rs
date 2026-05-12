@@ -59,10 +59,7 @@ const TRUNCATE_FOLD_LINES: usize = 50;
 
 /// 将 Markdown 渲染为 Lines，超过阈值时截断中间部分。
 /// 返回 (lines, was_truncated)。
-pub fn render_markdown_truncated(
-    text: &str,
-    base_style: Style,
-) -> (Vec<Line<'static>>, bool) {
+pub fn render_markdown_truncated(text: &str, base_style: Style) -> (Vec<Line<'static>>, bool) {
     render_markdown_truncated_with_colors(text, base_style, &MdColors::default())
 }
 

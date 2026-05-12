@@ -63,7 +63,11 @@ impl ToolDefinition {
         }
 
         // 2. 类型校验
-        if let Some(properties) = self.parameters.get("properties").and_then(|p| p.as_object()) {
+        if let Some(properties) = self
+            .parameters
+            .get("properties")
+            .and_then(|p| p.as_object())
+        {
             for (key, schema) in properties {
                 if let Some(value) = obj.get(key) {
                     if let Some(expected_type) = schema.get("type").and_then(|t| t.as_str()) {
@@ -90,7 +94,11 @@ fn json_type_of(v: &Value) -> &'static str {
     match v {
         Value::String(_) => "string",
         Value::Number(n) => {
-            if n.is_f64() { "number" } else { "integer" }
+            if n.is_f64() {
+                "number"
+            } else {
+                "integer"
+            }
         }
         Value::Bool(_) => "boolean",
         Value::Array(_) => "array",
@@ -142,11 +150,14 @@ mod tests {
 
     #[test]
     fn validate_missing_required() {
-        let def = make_def("bash", json!({
-            "type": "object",
-            "properties": { "command": { "type": "string" } },
-            "required": ["command"]
-        }));
+        let def = make_def(
+            "bash",
+            json!({
+                "type": "object",
+                "properties": { "command": { "type": "string" } },
+                "required": ["command"]
+            }),
+        );
         let result = def.validate_input(&json!({}));
         assert!(result.is_err());
         let err = result.unwrap_err();
@@ -156,11 +167,14 @@ mod tests {
 
     #[test]
     fn validate_wrong_type() {
-        let def = make_def("bash", json!({
-            "type": "object",
-            "properties": { "command": { "type": "string" } },
-            "required": ["command"]
-        }));
+        let def = make_def(
+            "bash",
+            json!({
+                "type": "object",
+                "properties": { "command": { "type": "string" } },
+                "required": ["command"]
+            }),
+        );
         let result = def.validate_input(&json!({ "command": 123 }));
         assert!(result.is_err());
         assert!(result.unwrap_err().contains("expected type 'string'"));
@@ -168,22 +182,28 @@ mod tests {
 
     #[test]
     fn validate_ok() {
-        let def = make_def("bash", json!({
-            "type": "object",
-            "properties": { "command": { "type": "string" } },
-            "required": ["command"]
-        }));
+        let def = make_def(
+            "bash",
+            json!({
+                "type": "object",
+                "properties": { "command": { "type": "string" } },
+                "required": ["command"]
+            }),
+        );
         let result = def.validate_input(&json!({ "command": "echo hi" }));
         assert!(result.is_ok());
     }
 
     #[test]
     fn validate_unknown_field_ok() {
-        let def = make_def("bash", json!({
-            "type": "object",
-            "properties": { "command": { "type": "string" } },
-            "required": ["command"]
-        }));
+        let def = make_def(
+            "bash",
+            json!({
+                "type": "object",
+                "properties": { "command": { "type": "string" } },
+                "required": ["command"]
+            }),
+        );
         // extra fields should be tolerated
         let result = def.validate_input(&json!({ "command": "ls", "extra": 42 }));
         assert!(result.is_ok());
@@ -191,10 +211,13 @@ mod tests {
 
     #[test]
     fn validate_number_accepts_integer() {
-        let def = make_def("bash", json!({
-            "type": "object",
-            "properties": { "timeout": { "type": "number" } }
-        }));
+        let def = make_def(
+            "bash",
+            json!({
+                "type": "object",
+                "properties": { "timeout": { "type": "number" } }
+            }),
+        );
         // integer should be accepted as number
         let result = def.validate_input(&json!({ "timeout": 30 }));
         assert!(result.is_ok());

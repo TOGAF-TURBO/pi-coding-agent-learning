@@ -9,7 +9,6 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use reqwest::Client;
 
-
 use crate::driver::{CompletionRequest, LlmDriver, StreamEvent, StreamResult};
 use crate::openai::{build_openai_request, parse_openai_events};
 

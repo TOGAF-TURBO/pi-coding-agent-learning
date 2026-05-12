@@ -509,7 +509,7 @@ mod tests {
                 description: "Execute a shell command".to_string(),
                 parameters: serde_json::json!({"type": "object", "properties": {"command": {"type": "string"}}, "required": ["command"]}),
                 requires_approval: false,
-            execution_mode: Default::default(),
+                execution_mode: Default::default(),
             }],
             thinking_enabled: false,
             thinking_budget: None,

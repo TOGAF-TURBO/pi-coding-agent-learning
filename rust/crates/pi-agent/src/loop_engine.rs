@@ -240,7 +240,8 @@ impl AgentLoop {
             provider,
             model_id,
         };
-        if let Err(e) = self.session
+        if let Err(e) = self
+            .session
             .append(pi_types::session::SessionEntry::ModelChange(entry))
             .await
         {
@@ -338,7 +339,11 @@ impl AgentLoop {
                         total_thinking.push_str(&response.thinking);
                     }
                     for tc in &response.tool_calls {
-                        assistant_content.push(ContentBlock::tool_call(&tc.id, &tc.name, tc.input.clone()));
+                        assistant_content.push(ContentBlock::tool_call(
+                            &tc.id,
+                            &tc.name,
+                            tc.input.clone(),
+                        ));
                     }
 
                     // 追加助手消息到会话
@@ -372,7 +377,8 @@ impl AgentLoop {
                     total_tool_calls += response.tool_calls.len();
                     let tool_calls = &response.tool_calls;
                     let has_sequential = tool_calls.iter().any(|tc| {
-                        self.tools.get_definition(&tc.name)
+                        self.tools
+                            .get_definition(&tc.name)
                             .map(|d| matches!(d.execution_mode, ExecutionMode::Sequential))
                             .unwrap_or(false)
                     });
@@ -414,7 +420,10 @@ impl AgentLoop {
                     // 内层末尾：非阻塞轮询 steering 消息
                     if let Some(ref mut rx) = self.steering_rx {
                         while let Ok(steering_msg) = rx.try_recv() {
-                            tracing::info!("[agent] Steering message received ({} chars)", steering_msg.len());
+                            tracing::info!(
+                                "[agent] Steering message received ({} chars)",
+                                steering_msg.len()
+                            );
                             let steering_entry = MessageEntry {
                                 entry_type: "message".to_string(),
                                 id: generate_id(),
@@ -441,7 +450,10 @@ impl AgentLoop {
             if let Some(ref mut rx) = self.follow_up_rx {
                 match rx.recv().await {
                     Some(follow_up_msg) => {
-                        tracing::info!("[agent] FollowUp message received ({} chars)", follow_up_msg.len());
+                        tracing::info!(
+                            "[agent] FollowUp message received ({} chars)",
+                            follow_up_msg.len()
+                        );
                         let follow_up_entry = MessageEntry {
                             entry_type: "message".to_string(),
                             id: generate_id(),
@@ -674,7 +686,9 @@ impl AgentLoop {
                 Ok(r) => (r.output, r.is_error, r.terminate),
                 Err(e) => (format!("Tool execution error: {e}"), true, false),
             };
-            if terminated { any_terminate = true; }
+            if terminated {
+                any_terminate = true;
+            }
 
             self.emit(StreamEvent::ToolCallEnd {
                 index: 0,
@@ -723,7 +737,9 @@ impl AgentLoop {
                 Ok(r) => (r.output, r.is_error, r.terminate),
                 Err(e) => (format!("Tool execution error: {e}"), true, false),
             };
-            if terminated { any_terminate = true; }
+            if terminated {
+                any_terminate = true;
+            }
 
             self.emit(StreamEvent::ToolCallEnd {
                 index: 0,
@@ -817,7 +833,8 @@ impl AgentLoop {
             &self.api_key,
             &self.base_url,
             prev_ref,
-        ).await;
+        )
+        .await;
 
         if let Ok(true) = result {
             tracing::info!("[compaction] Structured summary generated");
@@ -983,13 +1000,19 @@ mod steering_tests {
             _req: CompletionRequest,
         ) -> std::result::Result<StreamResult, anyhow::Error> {
             let events: Vec<std::result::Result<StreamEvent, anyhow::Error>> = vec![
-                Ok(StreamEvent::TextDelta { text: "done".to_string() }),
-                Ok(StreamEvent::Stop { reason: Some(pi_types::message::StopReason::Stop) }),
+                Ok(StreamEvent::TextDelta {
+                    text: "done".to_string(),
+                }),
+                Ok(StreamEvent::Stop {
+                    reason: Some(pi_types::message::StopReason::Stop),
+                }),
             ];
             Ok(Box::pin(futures::stream::iter(events)))
         }
 
-        fn name(&self) -> &str { "mock" }
+        fn name(&self) -> &str {
+            "mock"
+        }
     }
 
     #[tokio::test]
@@ -1062,7 +1085,11 @@ mod steering_tests {
                 let entry = SessionEntry::Message(pi_types::session::MessageEntry {
                     entry_type: "message".to_string(),
                     id: format!("m{}", i),
-                    parent_id: if i == 0 { None } else { Some(format!("m{}", i - 1)) },
+                    parent_id: if i == 0 {
+                        None
+                    } else {
+                        Some(format!("m{}", i - 1))
+                    },
                     timestamp: "2025-01-01T00:00:00Z".to_string(),
                     role: role.to_string(),
                     content: serde_json::json!([{"type": "text", "text": text}]),
@@ -1075,8 +1102,13 @@ mod steering_tests {
             session
         });
 
-        AgentLoop::new(session, Box::new(MockTextDriver), ToolRegistry::new(), "test-model")
-            .with_api_key("test-key")
+        AgentLoop::new(
+            session,
+            Box::new(MockTextDriver),
+            ToolRegistry::new(),
+            "test-model",
+        )
+        .with_api_key("test-key")
     }
 
     #[test]
@@ -1098,11 +1130,18 @@ mod steering_tests {
         let mut session = rt.block_on(async {
             let mut s = JsonlSession::create(&path, "/test").await.unwrap();
             // user + assistant + user
-            for (i, (role, text)) in [("user", "hi"), ("assistant", "hello"), ("user", "bye")].iter().enumerate() {
+            for (i, (role, text)) in [("user", "hi"), ("assistant", "hello"), ("user", "bye")]
+                .iter()
+                .enumerate()
+            {
                 let entry = SessionEntry::Message(pi_types::session::MessageEntry {
                     entry_type: "message".to_string(),
                     id: format!("m{}", i),
-                    parent_id: if i == 0 { None } else { Some(format!("m{}", i - 1)) },
+                    parent_id: if i == 0 {
+                        None
+                    } else {
+                        Some(format!("m{}", i - 1))
+                    },
                     timestamp: "2025-01-01T00:00:00Z".to_string(),
                     role: role.to_string(),
                     content: serde_json::json!([{"type": "text", "text": text}]),
@@ -1125,8 +1164,13 @@ mod steering_tests {
             s
         });
 
-        let agent = AgentLoop::new(session, Box::new(MockTextDriver), ToolRegistry::new(), "test")
-            .with_api_key("k");
+        let agent = AgentLoop::new(
+            session,
+            Box::new(MockTextDriver),
+            ToolRegistry::new(),
+            "test",
+        )
+        .with_api_key("k");
         let messages = agent.build_messages().unwrap();
         // Should skip m0, m1 (archived), only return m2
         assert_eq!(messages.len(), 1);
@@ -1148,17 +1192,23 @@ mod steering_tests {
         let path = dir.path().join("test.jsonl");
         let session = JsonlSession::create(&path, "/test").await.unwrap();
         let mut agent = AgentLoop::new(
-            session, Box::new(MockTextDriver), ToolRegistry::new(), "old-model",
-        ).with_api_key("key");
+            session,
+            Box::new(MockTextDriver),
+            ToolRegistry::new(),
+            "old-model",
+        )
+        .with_api_key("key");
 
-        agent.set_model(Some("anthropic".to_string()), "claude-4".to_string()).await;
+        agent
+            .set_model(Some("anthropic".to_string()), "claude-4".to_string())
+            .await;
         assert_eq!(agent.model, "claude-4");
 
         // Check JSONL has model_change entry
         let entries = agent.session.entries();
-        let found = entries.iter().any(|e| {
-            matches!(e, SessionEntry::ModelChange(m) if m.model_id == "claude-4")
-        });
+        let found = entries
+            .iter()
+            .any(|e| matches!(e, SessionEntry::ModelChange(m) if m.model_id == "claude-4"));
         assert!(found, "Expected ModelChange entry in JSONL");
     }
 

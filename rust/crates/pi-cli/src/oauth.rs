@@ -10,10 +10,8 @@ use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-const GITHUB_DEVICE_CODE_URL: &str =
-    "https://github.com/login/device/code";
-const GITHUB_TOKEN_URL: &str =
-    "https://github.com/login/oauth/access_token";
+const GITHUB_DEVICE_CODE_URL: &str = "https://github.com/login/device/code";
+const GITHUB_TOKEN_URL: &str = "https://github.com/login/oauth/access_token";
 const CLIENT_ID: &str = "Iv1.b507a08c87ecfe98"; // Copilot CLI client ID
 
 /// device code 响应。
@@ -132,9 +130,7 @@ pub async fn poll_for_token(timeout_secs: u64) -> Result<String> {
             }
             Some("expired_token") => anyhow::bail!("Device code expired. Please try again."),
             Some(err) => {
-                let desc = token_resp
-                    .error_description
-                    .unwrap_or_default();
+                let desc = token_resp.error_description.unwrap_or_default();
                 anyhow::bail!("OAuth error: {} - {}", err, desc);
             }
             None => continue,
@@ -180,7 +176,11 @@ pub fn get_cached_token(auth_path: &std::path::Path) -> Option<String> {
 
     let content = std::fs::read_to_string(auth_path).ok()?;
     let entries: serde_json::Value = serde_json::from_str(&content).ok()?;
-    entries.get("copilot")?.get("access_token")?.as_str().map(|s| s.to_string())
+    entries
+        .get("copilot")?
+        .get("access_token")?
+        .as_str()
+        .map(|s| s.to_string())
 }
 
 /// 清除缓存的 token。

@@ -21,27 +21,15 @@ pub fn to_anthropic_messages(messages: &[Message]) -> Vec<Value> {
     for msg in messages {
         match msg {
             Message::User(u) => {
-                let content: Vec<Value> = u
-                    .content
-                    .iter()
-                    .map(block_to_anthropic)
-                    .collect();
+                let content: Vec<Value> = u.content.iter().map(block_to_anthropic).collect();
                 result.push(json!({"role": "user", "content": content}));
             }
             Message::Assistant(a) => {
-                let content: Vec<Value> = a
-                    .content
-                    .iter()
-                    .map(block_to_anthropic)
-                    .collect();
+                let content: Vec<Value> = a.content.iter().map(block_to_anthropic).collect();
                 result.push(json!({"role": "assistant", "content": content}));
             }
             Message::ToolResult(tr) => {
-                let content: Vec<Value> = tr
-                    .content
-                    .iter()
-                    .map(block_to_anthropic)
-                    .collect();
+                let content: Vec<Value> = tr.content.iter().map(block_to_anthropic).collect();
                 result.push(json!({"role": "user", "content": content}));
             }
         }
@@ -195,27 +183,15 @@ pub fn to_gemini_contents(messages: &[Message]) -> Vec<Value> {
     for msg in messages {
         match msg {
             Message::User(u) => {
-                let parts: Vec<Value> = u
-                    .content
-                    .iter()
-                    .map(block_to_gemini_part)
-                    .collect();
+                let parts: Vec<Value> = u.content.iter().map(block_to_gemini_part).collect();
                 result.push(json!({"role": "user", "parts": parts}));
             }
             Message::Assistant(a) => {
-                let parts: Vec<Value> = a
-                    .content
-                    .iter()
-                    .map(block_to_gemini_part)
-                    .collect();
+                let parts: Vec<Value> = a.content.iter().map(block_to_gemini_part).collect();
                 result.push(json!({"role": "model", "parts": parts}));
             }
             Message::ToolResult(tr) => {
-                let parts: Vec<Value> = tr
-                    .content
-                    .iter()
-                    .map(block_to_gemini_part)
-                    .collect();
+                let parts: Vec<Value> = tr.content.iter().map(block_to_gemini_part).collect();
                 result.push(json!({"role": "user", "parts": parts}));
             }
         }
@@ -253,7 +229,9 @@ fn block_to_gemini_part(block: &ContentBlock) -> Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use pi_types::message::{AssistantMessage, ToolCall, ToolResult as ToolResultContent, ToolResultMessage, UserMessage};
+    use pi_types::message::{
+        AssistantMessage, ToolCall, ToolResult as ToolResultContent, ToolResultMessage, UserMessage,
+    };
 
     fn text_user(text: &str) -> Message {
         Message::User(UserMessage {

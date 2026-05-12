@@ -83,7 +83,9 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
                         path: display,
                         content: format!(
                             "[image too large: {} ({} bytes, max {} bytes)]",
-                            file_path, bytes.len(), MAX_IMAGE_BYTES
+                            file_path,
+                            bytes.len(),
+                            MAX_IMAGE_BYTES
                         ),
                         is_binary: true,
                         image: None,
@@ -292,10 +294,7 @@ mod tests {
         let data = vec![0u8; 1024 * 1024 + 1]; // just over 1MB
         std::fs::write(&big, &data).unwrap();
 
-        let (msg, refs) = resolve_file_refs(
-            &format!("@{}", big.display()),
-            dir.path(),
-        );
+        let (msg, refs) = resolve_file_refs(&format!("@{}", big.display()), dir.path());
         assert!(refs[0].image.is_none());
         assert!(refs[0].content.contains("image too large"));
     }

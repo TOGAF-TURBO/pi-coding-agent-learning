@@ -28,10 +28,7 @@ impl SystemPromptBuilder {
 
     /// 设置模型信息（名称 + provider），注入 system prompt。
     pub fn with_model_info(mut self, model_name: &str, provider: &str) -> Self {
-        self.model_info = Some(format!(
-            "You are {} served by {}.",
-            model_name, provider
-        ));
+        self.model_info = Some(format!("You are {} served by {}.", model_name, provider));
         self
     }
 
@@ -129,9 +126,9 @@ fn default_role_prompt(cwd: &str) -> String {
 - Use the `read` tool to inspect files before making wide-ranging changes.
 - Never use `git add -A` or `git add .` — always use `git add <specific-file-paths>`.
 - When you don't know something, say so. Don't make up information.
-"#
-        , cwd = cwd
-        , date = chrono::Utc::now().format("%Y-%m-%d")
+"#,
+        cwd = cwd,
+        date = chrono::Utc::now().format("%Y-%m-%d")
     )
 }
 
@@ -242,8 +239,7 @@ mod tests {
 
     #[test]
     fn model_info_injected() {
-        let builder = SystemPromptBuilder::new("/tmp")
-            .with_model_info("glm-5.1", "zhipu");
+        let builder = SystemPromptBuilder::new("/tmp").with_model_info("glm-5.1", "zhipu");
         let prompt = builder.build();
         assert!(prompt.contains("You are glm-5.1 served by zhipu."));
     }

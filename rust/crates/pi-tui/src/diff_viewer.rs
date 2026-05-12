@@ -233,33 +233,21 @@ impl DiffViewer {
                 )),
                 DiffLine::Added(text) => Line::from(vec![
                     Span::styled("+", Style::default().fg(Color::Green)),
-                    Span::styled(
-                        text.clone(),
-                        Style::default().fg(Color::Green),
-                    ),
+                    Span::styled(text.clone(), Style::default().fg(Color::Green)),
                 ]),
                 DiffLine::Removed(text) => Line::from(vec![
                     Span::styled("-", Style::default().fg(Color::Red)),
-                    Span::styled(
-                        text.clone(),
-                        Style::default().fg(Color::Red),
-                    ),
+                    Span::styled(text.clone(), Style::default().fg(Color::Red)),
                 ]),
-                DiffLine::Context(text) => {
-                    Line::from(Span::styled(
-                        format!(" {}", text),
-                        Style::default().fg(Color::DarkGray),
-                    ))
-                }
+                DiffLine::Context(text) => Line::from(Span::styled(
+                    format!(" {}", text),
+                    Style::default().fg(Color::DarkGray),
+                )),
             })
             .collect();
 
         let paragraph = Paragraph::new(lines)
-            .block(
-                Block::default()
-                    .borders(Borders::ALL)
-                    .title(title),
-            )
+            .block(Block::default().borders(Borders::ALL).title(title))
             .scroll((self.scroll_offset, 0))
             .wrap(Wrap { trim: false });
 

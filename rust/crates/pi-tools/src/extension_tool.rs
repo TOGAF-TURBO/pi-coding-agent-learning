@@ -34,7 +34,7 @@ impl ExtensionTool {
                     "required": []
                 }),
                 requires_approval: false,
-            execution_mode: ExecutionMode::default(),
+                execution_mode: ExecutionMode::default(),
             },
             handler: Arc::new(handler),
         }
@@ -55,14 +55,14 @@ impl ToolExecutor for ExtensionTool {
                 output,
                 is_error: false,
                 duration_ms: None,
-            terminate: false,
+                terminate: false,
             }),
             Err(e) => Ok(ToolResult {
                 tool_use_id: String::new(),
                 output: e,
                 is_error: true,
                 duration_ms: None,
-            terminate: false,
+                terminate: false,
             }),
         }
     }

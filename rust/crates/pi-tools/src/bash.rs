@@ -191,7 +191,7 @@ impl ToolExecutor for BashTool {
                     output,
                     is_error: exit_code != 0,
                     duration_ms: None,
-            terminate: false,
+                    terminate: false,
                 })
             }
             Ok(Err(e)) => Err(e),
@@ -262,7 +262,10 @@ mod tests {
             .output()
             .unwrap();
         // pgrep 可能返回 1（没找到），stdout 为空或 "0"
-        let count = String::from_utf8_lossy(&output.stdout).trim().parse::<u32>().unwrap_or(0);
+        let count = String::from_utf8_lossy(&output.stdout)
+            .trim()
+            .parse::<u32>()
+            .unwrap_or(0);
         // 不应该有残留的 sleep 进程（允许系统其他 sleep，但不超过 5）
         assert!(count < 5, "Expected few/no sleep processes, found {count}");
     }

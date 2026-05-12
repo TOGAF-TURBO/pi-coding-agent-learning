@@ -19,7 +19,6 @@ use std::sync::Arc;
 use std::sync::RwLock;
 
 use anyhow::Result;
-use serde_json::json;
 use crossterm::event::KeyCode;
 use pi_agent::loop_engine::{AgentLoop, StreamSink};
 use pi_llm::driver::LlmDriver;
@@ -32,6 +31,7 @@ use pi_tools::grep::GrepTool;
 use pi_tools::read::ReadTool;
 use pi_tools::registry::ToolRegistry;
 use pi_tools::write::WriteTool;
+use serde_json::json;
 use tokio::sync::mpsc;
 
 use crate::app::{AgentState, AppState};
@@ -167,14 +167,20 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     );
                     // 图片文件：追加描述到消息
                     let final_text = if file_refs.iter().any(|r| r.image.is_some()) {
-                        let images: Vec<_> = file_refs.iter()
-                            .filter_map(|r| r.image.as_ref().map(|img| format!("[image: {} ({})]", r.path, img.mime_type)))
+                        let images: Vec<_> = file_refs
+                            .iter()
+                            .filter_map(|r| {
+                                r.image
+                                    .as_ref()
+                                    .map(|img| format!("[image: {} ({})]", r.path, img.mime_type))
+                            })
                             .collect();
                         format!("{}\n\nAttached images: {}", resolved, images.join(", "))
                     } else {
                         resolved
                     };
-                    run_agent_turn(&final_text, &mut session, &agent_state, &tools, &agent_ctx).await;
+                    run_agent_turn(&final_text, &mut session, &agent_state, &tools, &agent_ctx)
+                        .await;
                 }
                 Command::Abort => {
                     agent_abort.store(true, Ordering::SeqCst);
@@ -471,11 +477,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                                     extension_runner: &extension_runner,
                                     cwd: std::path::Path::new(&cwd_for_slash),
                                 };
-                                let skill_content = handle_slash_command(
-                                    cmd,
-                                    &mut slash_ctx,
-                                )
-                                .await;
+                                let skill_content = handle_slash_command(cmd, &mut slash_ctx).await;
                                 if let Some(skill_text) = skill_content {
                                     *last_user_msg.write().unwrap() = skill_text.clone();
                                     let _ = cmd_tx.send(Command::Send { text: skill_text });
@@ -571,20 +573,18 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                             }
                         }
                     }
-                    Action::None => {
-                        match key.code {
-                            KeyCode::Char(c) => input.insert(c),
-                            KeyCode::Backspace => input.backspace(),
-                            KeyCode::Delete => input.delete(),
-                            KeyCode::Left => input.move_left(),
-                            KeyCode::Right => input.move_right(),
-                            KeyCode::Home => input.move_home(),
-                            KeyCode::End => input.move_end(),
-                            KeyCode::Up => input.history_up(),
-                            KeyCode::Down => input.history_down(),
-                            _ => {}
-                        }
-                    }
+                    Action::None => match key.code {
+                        KeyCode::Char(c) => input.insert(c),
+                        KeyCode::Backspace => input.backspace(),
+                        KeyCode::Delete => input.delete(),
+                        KeyCode::Left => input.move_left(),
+                        KeyCode::Right => input.move_right(),
+                        KeyCode::Home => input.move_home(),
+                        KeyCode::End => input.move_end(),
+                        KeyCode::Up => input.history_up(),
+                        KeyCode::Down => input.history_down(),
+                        _ => {}
+                    },
                 }
             }
             Event::Resize(_, _) => {}
@@ -871,7 +871,9 @@ async fn handle_slash_command(
                 };
                 match (entry.handler)(args) {
                     Ok(()) => {}
-                    Err(e) => ctx.state.push_system(&format!("Command /{} failed: {}", name, e)),
+                    Err(e) => ctx
+                        .state
+                        .push_system(&format!("Command /{} failed: {}", name, e)),
                 }
                 return None;
             }
@@ -911,7 +913,8 @@ async fn handle_slash_command(
                         let mut f = ctx.state.footer.write();
                         f.model = model_name.clone();
                     }
-                    ctx.state.push_system(&format!("Model switched to {}", model_name));
+                    ctx.state
+                        .push_system(&format!("Model switched to {}", model_name));
                 }
                 None => {
                     // 打开模型选择器 — 通过触发 overlay
@@ -923,7 +926,8 @@ async fn handle_slash_command(
             }
         }
         SlashCommand::Branch => {
-            ctx.state.push_system("Branch: use /sessions to pick a session to branch from.");
+            ctx.state
+                .push_system("Branch: use /sessions to pick a session to branch from.");
         }
         SlashCommand::Export(path) => {
             let _ = ctx.cmd_tx.send(Command::Export { path });
@@ -985,7 +989,8 @@ async fn handle_slash_command(
                         }
                     }
                     if results.is_empty() {
-                        ctx.state.push_system(&format!("No sessions matching '{}'", term));
+                        ctx.state
+                            .push_system(&format!("No sessions matching '{}'", term));
                     } else {
                         ctx.state.push_system(&format!(
                             "Found {} sessions:\n{}",
@@ -1024,7 +1029,8 @@ async fn handle_slash_command(
                 }
             }
             if matches.is_empty() {
-                ctx.state.push_system(&format!("No messages matching '{}'", term));
+                ctx.state
+                    .push_system(&format!("No messages matching '{}'", term));
             } else {
                 ctx.state.push_system(&format!(
                     "Found {} messages:\n{}",
@@ -1072,7 +1078,8 @@ async fn handle_slash_command(
                             let _ = stdin.write_all(text.as_bytes());
                         }
                         let _ = child.wait();
-                        ctx.state.push_system(&format!("Copied {} chars to clipboard", text.len()));
+                        ctx.state
+                            .push_system(&format!("Copied {} chars to clipboard", text.len()));
                     }
                     Err(_) => {
                         // xclip 不可用，尝试 pbcopy (macOS)
@@ -1108,7 +1115,8 @@ async fn handle_slash_command(
             if at.is_empty() {
                 ctx.state.push_system("Usage: /fork <message-id or index>");
             } else {
-                ctx.state.push_system(&format!("Fork at '{}' not yet implemented", at));
+                ctx.state
+                    .push_system(&format!("Fork at '{}' not yet implemented", at));
             }
         }
         SlashCommand::SessionInfo => {
@@ -1178,8 +1186,7 @@ async fn handle_slash_command(
             let mut diff_lines = Vec::new();
             for entry in entries.iter() {
                 if matches!(entry.role, crate::app::ChatRole::Tool { .. })
-                    && (entry.content.contains("diff --git")
-                        || entry.content.contains("--- a/"))
+                    && (entry.content.contains("diff --git") || entry.content.contains("--- a/"))
                 {
                     diff_lines.push(entry.content.clone());
                 }
@@ -1194,10 +1201,12 @@ async fn handle_slash_command(
             }
         }
         SlashCommand::Login => {
-            ctx.state.push_system("Use 'piso login' from terminal for GitHub Copilot OAuth.");
+            ctx.state
+                .push_system("Use 'piso login' from terminal for GitHub Copilot OAuth.");
         }
         SlashCommand::Logout => {
-            ctx.state.push_system("Use 'piso logout' from terminal to clear OAuth token.");
+            ctx.state
+                .push_system("Use 'piso logout' from terminal to clear OAuth token.");
         }
         SlashCommand::Skill(name) => {
             match crate::slash::resolve_skill(&name, ctx.cwd) {

@@ -89,7 +89,7 @@ mod tests {
                 description: "A test tool".to_string(),
                 parameters: serde_json::json!({}),
                 requires_approval: false,
-            execution_mode: Default::default(),
+                execution_mode: Default::default(),
             }
         }
 
@@ -99,7 +99,7 @@ mod tests {
                 output: "dummy result".to_string(),
                 is_error: false,
                 duration_ms: None,
-            terminate: false,
+                terminate: false,
             })
         }
     }

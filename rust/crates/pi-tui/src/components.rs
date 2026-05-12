@@ -24,27 +24,27 @@ pub(crate) mod colors {
     use ratatui::style::Color;
 
     // 精确色值来自 TS dark.json vars
-    pub const ACCENT: Color = Color::Rgb(138, 190, 183);       // accent
-    pub const BORDER: Color = Color::Rgb(95, 135, 255);        // blue
-    pub const BORDER_ACCENT: Color = Color::Rgb(0, 215, 255);  // cyan
-    pub const SUCCESS: Color = Color::Rgb(181, 189, 104);      // green
-    pub const ERROR: Color = Color::Rgb(204, 102, 102);        // red
-    pub const WARNING: Color = Color::Rgb(255, 255, 0);        // yellow
-    pub const MUTED: Color = Color::Rgb(128, 128, 128);        // gray
-    pub const DIM: Color = Color::Rgb(102, 102, 102);          // dimGray
-    pub const DARK_GRAY: Color = Color::Rgb(80, 80, 80);       // darkGray
+    pub const ACCENT: Color = Color::Rgb(138, 190, 183); // accent
+    pub const BORDER: Color = Color::Rgb(95, 135, 255); // blue
+    pub const BORDER_ACCENT: Color = Color::Rgb(0, 215, 255); // cyan
+    pub const SUCCESS: Color = Color::Rgb(181, 189, 104); // green
+    pub const ERROR: Color = Color::Rgb(204, 102, 102); // red
+    pub const WARNING: Color = Color::Rgb(255, 255, 0); // yellow
+    pub const MUTED: Color = Color::Rgb(128, 128, 128); // gray
+    pub const DIM: Color = Color::Rgb(102, 102, 102); // dimGray
+    pub const DARK_GRAY: Color = Color::Rgb(80, 80, 80); // darkGray
     #[allow(dead_code)]
-    pub const MD_HEADING: Color = Color::Rgb(240, 198, 116);   // #f0c674
+    pub const MD_HEADING: Color = Color::Rgb(240, 198, 116); // #f0c674
     #[allow(dead_code)]
-    pub const MD_LINK: Color = Color::Rgb(129, 162, 190);      // #81a2be
+    pub const MD_LINK: Color = Color::Rgb(129, 162, 190); // #81a2be
     #[allow(dead_code)]
-    pub const MD_CODE: Color = Color::Rgb(138, 190, 183);      // accent
-    pub const USER_MSG_BG: Color = Color::Rgb(52, 53, 65);     // #343541
+    pub const MD_CODE: Color = Color::Rgb(138, 190, 183); // accent
+    pub const USER_MSG_BG: Color = Color::Rgb(52, 53, 65); // #343541
     #[allow(dead_code)]
     pub const TOOL_PENDING_BG: Color = Color::Rgb(40, 40, 50); // #282832
     pub const TOOL_SUCCESS_BG: Color = Color::Rgb(40, 50, 40); // #283228
-    pub const TOOL_ERROR_BG: Color = Color::Rgb(60, 40, 40);   // #3c2828
-    pub const THINKING: Color = Color::Rgb(128, 128, 128);     // gray
+    pub const TOOL_ERROR_BG: Color = Color::Rgb(60, 40, 40); // #3c2828
+    pub const THINKING: Color = Color::Rgb(128, 128, 128); // gray
 }
 
 /// Braille spinner 帧序列（与 TS 版 DEFAULT_FRAMES 一致）。
@@ -67,8 +67,6 @@ fn format_tokens(count: u32) -> String {
         format!("{:.1}M", count as f64 / 1_000_000.0)
     }
 }
-
-
 
 /// 将文本按宽度换行。
 fn wrap_text(text: &str, max_width: usize) -> Vec<String> {
@@ -115,7 +113,13 @@ fn unicode_width(ch: char) -> usize {
 }
 
 /// 渲染 chat 区域。
-pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_offset: usize, tick: usize) {
+pub fn render_chat(
+    f: &mut ratatui::Frame,
+    area: Rect,
+    state: &AppState,
+    scroll_offset: usize,
+    tick: usize,
+) {
     let entries = state.entries.read();
     let content_width = area.width.saturating_sub(4) as usize;
     let mut lines: Vec<Line> = Vec::new();
@@ -140,7 +144,8 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
             ChatRole::Assistant => {
                 // 助手消息：无背景色，Markdown 渲染
                 let content_style = Style::default();
-                let (md_lines, _truncated) = render_markdown_truncated(&entry.content, content_style);
+                let (md_lines, _truncated) =
+                    render_markdown_truncated(&entry.content, content_style);
                 for md_line in md_lines {
                     let mut spans: Vec<Span<'static>> = Vec::new();
                     for s in md_line.spans {
@@ -186,15 +191,13 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
                 };
 
                 // 工具头部
-                lines.push(Line::from(vec![
-                    Span::styled(
-                        format!(" {} {} ", icon, name),
-                        Style::default()
-                            .fg(name_color)
-                            .add_modifier(Modifier::BOLD)
-                            .bg(bg),
-                    ),
-                ]));
+                lines.push(Line::from(vec![Span::styled(
+                    format!(" {} {} ", icon, name),
+                    Style::default()
+                        .fg(name_color)
+                        .add_modifier(Modifier::BOLD)
+                        .bg(bg),
+                )]));
 
                 // 工具输出
                 let wrapped = wrap_text(&entry.content, content_width);
@@ -215,10 +218,7 @@ pub fn render_chat(f: &mut ratatui::Frame, area: Rect, state: &AppState, scroll_
                     Style::default().fg(colors::MUTED)
                 };
                 for line in &display_lines {
-                    lines.push(Line::from(Span::styled(
-                        format!(" {}", line),
-                        output_style,
-                    )));
+                    lines.push(Line::from(Span::styled(format!(" {}", line), output_style)));
                 }
             }
         }
@@ -345,10 +345,7 @@ pub fn render_status(f: &mut ratatui::Frame, area: Rect, state: &AppState) {
         String::new()
     };
     if !elapsed.is_empty() {
-        left_parts.push(Span::styled(
-            elapsed,
-            Style::default().fg(colors::DIM),
-        ));
+        left_parts.push(Span::styled(elapsed, Style::default().fg(colors::DIM)));
     }
 
     let line = Line::from(left_parts);
@@ -458,10 +455,7 @@ pub fn render_footer(
     }
 
     // 分隔
-    spans.push(Span::styled(
-        "  ".to_string(),
-        Style::default(),
-    ));
+    spans.push(Span::styled("  ".to_string(), Style::default()));
 
     // 快捷键提示
     for (tag, text) in hints {
@@ -473,10 +467,7 @@ pub fn render_footer(
                     .add_modifier(Modifier::BOLD),
             ));
         } else {
-            spans.push(Span::styled(
-                text.clone(),
-                Style::default().fg(colors::DIM),
-            ));
+            spans.push(Span::styled(text.clone(), Style::default().fg(colors::DIM)));
         }
     }
 
@@ -507,11 +498,18 @@ pub fn render_all(
     render_chat(f, regions.chat, state, scroll_offset, tick);
     render_status(f, regions.status, state);
     render_editor(f, regions.editor, input, cursor_pos, true, is_running);
-    render_footer(f, regions.footer, is_running, &model, &provider, git, footer_hints);
+    render_footer(
+        f,
+        regions.footer,
+        is_running,
+        &model,
+        &provider,
+        git,
+        footer_hints,
+    );
 }
 
 /// Leaked string for static lifetime.
 fn leak_str(s: String) -> &'static str {
     Box::leak(s.into_boxed_str())
 }
-

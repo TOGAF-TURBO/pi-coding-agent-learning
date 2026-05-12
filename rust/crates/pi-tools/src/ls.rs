@@ -74,7 +74,7 @@ impl ToolExecutor for LsTool {
                 output: format!("Directory not found: {}", path),
                 is_error: true,
                 duration_ms: None,
-            terminate: false,
+                terminate: false,
             });
         }
 
@@ -84,7 +84,7 @@ impl ToolExecutor for LsTool {
                 output: format!("Not a directory: {}", path),
                 is_error: true,
                 duration_ms: None,
-            terminate: false,
+                terminate: false,
             });
         }
 

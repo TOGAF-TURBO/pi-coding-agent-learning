@@ -27,7 +27,10 @@ pub enum ChatRole {
     /// LLM 思考/推理内容（暗色显示，不与正文混合）。
     Thinking,
     System,
-    Tool { name: String, is_error: bool },
+    Tool {
+        name: String,
+        is_error: bool,
+    },
 }
 
 impl std::fmt::Display for ChatRole {
@@ -240,8 +243,12 @@ mod tests {
         state.push_tool_result("edit", "fail", true);
         let entries = state.entries.read();
         assert_eq!(entries.len(), 2);
-        assert!(matches!(&entries[0].role, ChatRole::Tool { name, is_error } if name == "bash" && !is_error));
-        assert!(matches!(&entries[1].role, ChatRole::Tool { name, is_error } if name == "edit" && *is_error));
+        assert!(
+            matches!(&entries[0].role, ChatRole::Tool { name, is_error } if name == "bash" && !is_error)
+        );
+        assert!(
+            matches!(&entries[1].role, ChatRole::Tool { name, is_error } if name == "edit" && *is_error)
+        );
     }
 
     #[test]
@@ -270,7 +277,13 @@ mod tests {
         assert_eq!(format!("{}", ChatRole::Thinking), "Thinking");
         assert_eq!(format!("{}", ChatRole::System), "System");
         assert_eq!(
-            format!("{}", ChatRole::Tool { name: "bash".into(), is_error: false }),
+            format!(
+                "{}",
+                ChatRole::Tool {
+                    name: "bash".into(),
+                    is_error: false
+                }
+            ),
             "bash"
         );
     }

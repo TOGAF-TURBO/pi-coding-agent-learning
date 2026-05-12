@@ -273,34 +273,19 @@ pub struct ModelInfo {
 pub enum ExtensionUiRequestData {
     /// 选择列表。
     #[serde(rename = "select")]
-    Select {
-        title: String,
-        options: Vec<String>,
-    },
+    Select { title: String, options: Vec<String> },
     /// 确认对话框。
     #[serde(rename = "confirm")]
-    Confirm {
-        title: String,
-        message: String,
-    },
+    Confirm { title: String, message: String },
     /// 文本输入。
     #[serde(rename = "input")]
-    Input {
-        title: String,
-        placeholder: String,
-    },
+    Input { title: String, placeholder: String },
     /// 设置 widget 内容。
     #[serde(rename = "set_widget")]
-    SetWidget {
-        key: String,
-        content: String,
-    },
+    SetWidget { key: String, content: String },
     /// 设置状态栏文本。
     #[serde(rename = "set_status")]
-    SetStatus {
-        key: String,
-        text: String,
-    },
+    SetStatus { key: String, text: String },
 }
 
 /// 扩展 UI 响应数据（IDE → piso）。

@@ -278,8 +278,13 @@ async fn run_print(cli: Cli) -> Result<()> {
     let (user_message, file_refs) = pi_tools::fileref::resolve_file_refs(&user_message, &cwd);
     // 图片文件：追加描述到消息
     let user_message = if file_refs.iter().any(|r| r.image.is_some()) {
-        let images: Vec<_> = file_refs.iter()
-            .filter_map(|r| r.image.as_ref().map(|img| format!("[image: {} ({})]", r.path, img.mime_type)))
+        let images: Vec<_> = file_refs
+            .iter()
+            .filter_map(|r| {
+                r.image
+                    .as_ref()
+                    .map(|img| format!("[image: {} ({})]", r.path, img.mime_type))
+            })
             .collect();
         format!("{}\n\nAttached images: {}", user_message, images.join(", "))
     } else {
@@ -383,8 +388,11 @@ async fn run_interactive_mode(cli: Cli) -> Result<()> {
     let auth = AuthStorage::load(config_dir.as_deref())?;
 
     // 解析 --model 紧凑语法
-    let (model_override_int, provider_override_int, _thinking_int) =
-        cli.model.as_deref().map(parse_model_pattern).unwrap_or((None, None, None));
+    let (model_override_int, provider_override_int, _thinking_int) = cli
+        .model
+        .as_deref()
+        .map(parse_model_pattern)
+        .unwrap_or((None, None, None));
 
     let provider_env = std::env::var("PISO_PROVIDER")
         .ok()

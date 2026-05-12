@@ -318,7 +318,11 @@ mod tests {
             let entry = SessionEntry::Message(pi_types::session::MessageEntry {
                 entry_type: "message".to_string(),
                 id: format!("m{}", i),
-                parent_id: if i == 1 { None } else { Some(format!("m{}", i - 1)) },
+                parent_id: if i == 1 {
+                    None
+                } else {
+                    Some(format!("m{}", i - 1))
+                },
                 timestamp: format!("2025-01-01T00:00:0{}Z", i),
                 role: "user".to_string(),
                 content: serde_json::json!([{"type": "text", "text": format!("msg {}", i)}]),

@@ -26,8 +26,8 @@ fn main() -> Result<()> {
             }
             "install" => {
                 let source = args.get(2).map(|s| s.as_str()).unwrap_or("");
-                let local = args.contains(&"--local".to_string())
-                    || args.contains(&"-l".to_string());
+                let local =
+                    args.contains(&"--local".to_string()) || args.contains(&"-l".to_string());
                 if source.is_empty() {
                     eprintln!("Usage: piso install <source> [-l]");
                     std::process::exit(1);
@@ -66,8 +66,8 @@ fn main() -> Result<()> {
                     }
                     match pi_cli::oauth::poll_for_token(300).await {
                         Ok(token) => {
-                            let config_dir = pi_cli::config::config_dir()
-                                .unwrap_or_else(|| ".".into());
+                            let config_dir =
+                                pi_cli::config::config_dir().unwrap_or_else(|| ".".into());
                             let auth_path = config_dir.join("auth.json");
                             pi_cli::oauth::save_token(&token, &auth_path)?;
                             println!("Login successful! Token saved.");
@@ -80,8 +80,7 @@ fn main() -> Result<()> {
                 });
             }
             "logout" => {
-                let config_dir = pi_cli::config::config_dir()
-                    .unwrap_or_else(|| ".".into());
+                let config_dir = pi_cli::config::config_dir().unwrap_or_else(|| ".".into());
                 let auth_path = config_dir.join("auth.json");
                 pi_cli::oauth::clear_token(&auth_path)?;
                 println!("Logged out. Cached token cleared.");

@@ -91,7 +91,10 @@ pub fn resolve_skill(name: &str, cwd: &std::path::Path) -> Result<String, String
         }
     }
 
-    Err(format!("Skill '{}' not found. Searched .piso/skills/ and ~/.piso/skills/", name))
+    Err(format!(
+        "Skill '{}' not found. Searched .piso/skills/ and ~/.piso/skills/",
+        name
+    ))
 }
 
 /// 解析输入文本为 slash 命令。
@@ -281,7 +284,11 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let skills_dir = dir.path().join(".piso").join("skills").join("debug");
         std::fs::create_dir_all(&skills_dir).unwrap();
-        std::fs::write(skills_dir.join("SKILL.md"), "# Debug Skill\nUse for debugging.").unwrap();
+        std::fs::write(
+            skills_dir.join("SKILL.md"),
+            "# Debug Skill\nUse for debugging.",
+        )
+        .unwrap();
 
         let result = resolve_skill("debug", dir.path());
         assert!(result.is_ok());

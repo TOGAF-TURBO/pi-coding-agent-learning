@@ -143,10 +143,7 @@ pub async fn compact(
             ),
         )
     } else {
-        (
-            SUMMARIZATION_PROMPT.to_string(),
-            conversation_text.clone(),
-        )
+        (SUMMARIZATION_PROMPT.to_string(), conversation_text.clone())
     };
 
     let request = CompletionRequest {
@@ -203,7 +200,9 @@ pub async fn compact(
     };
 
     session
-        .append(pi_types::session::SessionEntry::Compaction(compaction_entry))
+        .append(pi_types::session::SessionEntry::Compaction(
+            compaction_entry,
+        ))
         .await
         .map_err(|e| anyhow::anyhow!("Failed to write compaction entry: {e}"))?;
 

@@ -45,8 +45,7 @@ impl Settings {
             fs::create_dir_all(parent)?;
         }
         let content = serde_json::to_string_pretty(self)?;
-        fs::write(&path, content)
-            .with_context(|| format!("Failed to write {}", path.display()))
+        fs::write(&path, content).with_context(|| format!("Failed to write {}", path.display()))
     }
 
     /// 查找扩展索引。
@@ -62,8 +61,7 @@ impl Settings {
 
 /// settings.json 路径。
 fn settings_path() -> Result<PathBuf> {
-    let config_dir = config::config_dir()
-        .unwrap_or_else(|| PathBuf::from(".piso"));
+    let config_dir = config::config_dir().unwrap_or_else(|| PathBuf::from(".piso"));
     Ok(config_dir.join("settings.json"))
 }
 
@@ -125,10 +123,7 @@ pub fn update(target: Option<&str>) -> Result<()> {
             match settings.find_index(name) {
                 Some(idx) => {
                     let ext = &settings.extensions[idx];
-                    println!(
-                        "Updating extension '{}' from {} ...",
-                        ext.name, ext.source
-                    );
+                    println!("Updating extension '{}' from {} ...", ext.name, ext.source);
                     println!("Extension update requires manual re-download.");
                 }
                 None => {
