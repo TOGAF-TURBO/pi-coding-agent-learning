@@ -8,11 +8,29 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Added
 
+- **Parallel tool execution** (G1): ExecutionMode enum (Parallel/Sequential), futures::join_all for concurrent tool calls, ordered result collection
+- **Structured compaction** (G2): Goal/Progress/Done/Blocked/NextSteps template matching TS version, UPDATE prompt for incremental merge with <previous-summary>
+- **Runtime parameter validation** (G4): ToolDefinition::validate_input() checks required fields and JSON Schema type matching before execution
+- **Process tree cleanup** (G3): setsid() for process groups, kill_process_tree() via libc::kill(-pgid) on Unix, taskkill /F /T on Windows
+- **Terminate signal** (G5): ToolResult.terminate field, agent loop breaks ReAct when tool requests termination
+- **System prompt date injection** (G7): {date} placeholder in default_role_prompt(), chrono::Utc::now()
+- **Dual-loop steering + followUp** (G6): inner loop polls steering_rx (try_recv), outer loop blocks on follow_up_rx (recv.await), matching TS dual-while pattern
+- **Image size limit** (G8): 1MB limit with graceful degradation, oversized images emit text placeholder
+- **Model change JSONL event** (G9): ModelChangeEntry in pi-types/session.rs, AgentLoop::set_model() appends model_change to JSONL for replay fidelity
+- **Runtime skill expansion** (G10): /skill:<name> slash command, resolve_skill() searches .piso/skills/ and ~/.piso/skills/
+- **JSONL compaction write** (G11): CompactionEntry.archived_range field, JsonlSession::active_entries() skips archived entries, build_messages() uses active context
+- **Extension transformContext hook** (G12): on_transform_context/on_convert_to_llm in ExtensionApi, fire_transform_context() called before LLM request
+- 18 new tests across 6 crates
+
 ### Changed
+
+- compaction.rs: log-only stub replaced with actual CompactionEntry write to JSONL
+- loop_engine.rs: single-loop restructured to dual-loop (outer followUp + inner ReAct+steering)
+- handle_slash_command: 8 params refactored into SlashContext struct
 
 ### Fixed
 
-### Removed
+- Clippy clean: 0 warnings on release + check
 
 ## [0.1.0] — 2026-05-12
 

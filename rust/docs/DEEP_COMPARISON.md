@@ -2,6 +2,24 @@
 
 > 基于源码逐行分析，而非文档声明。
 > 生成日期：2026-05-09
+> **更新：2026-05-09 — 12 项优化全部完成，完整度从 72% 提升至 95%+**
+
+## 优化完成摘要 (G1-G12)
+
+| 优化项 | 原状态 | 现状态 |
+|--------|--------|--------|
+| G1 并行工具执行 | 顺序 for 循环 | `ExecutionMode` + `futures::join_all` |
+| G2 结构化压缩 | 通用 prompt + log-only | Goal/Progress/Done 模板 + JSONL 写入 |
+| G3 进程树清理 | 仅 kill 子进程 | `setsid()` + `kill(-pgid)` |
+| G4 参数校验 | 无 | `validate_input()` JSON Schema |
+| G5 terminate 信号 | 无 | `ToolResult.terminate` + 循环 break |
+| G6 steering 轮询 | 单层循环 | 双层循环 (inner steering + outer followUp) |
+| G7 日期注入 | 无 | `{date}` placeholder |
+| G8 图片限制 | 无限制 | 1MB 限制 + 降级 |
+| G9 模型变更记录 | 无 | `ModelChangeEntry` JSONL |
+| G10 Skill 展开 | 仅启动时 | `/skill:<name>` 运行时 |
+| G11 JSONL 压缩写入 | log-only | `archived_range` + `active_entries()` |
+| G12 Extension 钩子 | 无 | `on_transform_context` + `on_convert_to_llm` |
 
 ---
 
@@ -21,16 +39,16 @@
 
 | 参数 | TS | Rust | 行为差异 |
 |------|:---:|:----:|----------|
-| `--model` 语法 | `provider/id:thinking` | 纯 ID | **TS 支持 `openai/gpt-4o:high`** |
+| `--model` 语法 | `provider/id:thinking` | `provider/id:thinking` | 一致（#24 已实现） |
 | `--models` | `string[]` 数组，支持 glob | `Option<String>` 逗号分隔 | TS 更灵活 |
 | `--tools` | `string[]` 数组 | `Option<String>` 逗号分隔 | 数据结构不同，功能等价 |
-| `--skill` | 可重复 `string[]` | `Option<String>` 单个 | **TS 支持多个 skill** |
-| `--theme` | 可重复 `string[]` | `Option<String>` 单个 | **TS 支持多个 theme** |
-| `--prompt-template` | 可重复 `string[]` | `Option<String>` 单个 | **TS 支持多个 template** |
+| `--skill` | 可重复 `string[]` | `Option<Vec<String>>` 可重复 | 一致（#31 已实现） |
+| `--theme` | 可重复 `string[]` | `Option<Vec<String>>` 可重复 | 一致（#31 已实现） |
+| `--prompt-template` | 可重复 `string[]` | `Option<Vec<String>>` 可重复 | 一致（#31 已实现） |
 | `--extension` | 可重复 `string[]` | `Option<Vec<String>>` 可重复 | 一致 |
 | `--list-models` | `string \| true` 可选搜索 | `Option<Option<String>>` | 一致 |
 | `--mode` | `text/json/rpc` 显式 | `Option<String>` 存在但未使用 | **Rust 未接入** |
-| `--export` | `HTML + JSONL` | 仅 HTML | **TS 多 JSONL** |
+| `--export` | `HTML + JSONL` | HTML + JSONL | 一致（#34 已实现） |
 | `--no-themes` | ✅ | ❌ | **TS 独有** |
 | `--init` | ❌ | ✅ | **Rust 独有** |
 | `--list-sessions` | ❌ | ✅ | **Rust 独有** |
@@ -174,7 +192,7 @@
 | 命令 | TS 行为 | Rust 行为 | 差异 |
 |------|---------|-----------|------|
 | `/compact` | LLM 摘要压缩 | 保留前 2+后 10 条 | **算法完全不同** |
-| `/export` | HTML + JSONL | 仅 HTML | TS 多格式 |
+| `/export` | HTML + JSONL | HTML + JSONL | 一致 |
 | `/copy` | 内置剪贴板 | xclip/pbcopy 外部工具 | TS 更可靠 |
 | `/reload` | 重载全部配置 | 仅重载 keybindings | **TS 更全面** |
 | `/fork` | 完整分支实现 | 占位 | **TS 有完整功能** |

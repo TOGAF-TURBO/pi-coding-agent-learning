@@ -4,6 +4,25 @@
 
 ---
 
+## 实施状态：12/12 完成 (100%)
+
+| # | 差距 | 优先级 | Issue | 状态 |
+|---|------|--------|-------|------|
+| G1 | 工具并行/串行执行 | P0 | #35 | Done |
+| G2 | 结构化压缩摘要 | P0 | #36 | Done |
+| G3 | 进程树清理 | P0 | #37 | Done |
+| G4 | 运行时参数校验 | P1 | #38 | Done |
+| G5 | terminate 信号 | P1 | #39 | Done |
+| G6 | steering 内层轮询 | P1 | #40 | Done |
+| G7 | system prompt date 注入 | P1 | #41 | Done |
+| G8 | 图片大小限制 | P1 | #42 | Done |
+| G9 | 模型变更 JSONL 记录 | P2 | #43 | Done |
+| G10 | Skill 运行时展开 | P2 | #44 | Done |
+| G11 | JSONL 压缩实际写入 | P2 | #45 | Done |
+| G12 | Extension transformContext/convertToLlm | P2 | #46 | Done |
+
+---
+
 ## 差距总览
 
 | # | 差距 | 影响 | 难度 | 优先级 |
