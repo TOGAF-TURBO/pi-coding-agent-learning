@@ -111,6 +111,7 @@ impl ToolExecutor for FindTool {
             output: result,
             is_error: false,
             duration_ms: None,
+            terminate: false,
         })
     }
 }

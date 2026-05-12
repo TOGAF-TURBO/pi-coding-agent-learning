@@ -28,6 +28,10 @@ pub struct ToolResult {
     pub is_error: bool,
     /// 执行耗时（毫秒）。
     pub duration_ms: Option<u64>,
+    /// 工具请求终止 Agent 循环。
+    /// 当所有工具结果都设置 terminate=true 时，ReAct 循环退出。
+    #[serde(default)]
+    pub terminate: bool,
 }
 
 /// 工具执行器的 trait。

@@ -119,6 +119,9 @@ fn default_role_prompt(cwd: &str) -> String {
 
 ## Rules
 
+- Current date: {date}
+- Current working directory: {cwd}
+
 - When making file edits, use the `edit` tool for precise changes. Only use `write` for new files or complete rewrites.
 - Before editing files you have not already inspected, read them first.
 - Keep edits minimal and focused on the user's request.
@@ -127,6 +130,8 @@ fn default_role_prompt(cwd: &str) -> String {
 - Never use `git add -A` or `git add .` — always use `git add <specific-file-paths>`.
 - When you don't know something, say so. Don't make up information.
 "#
+        , cwd = cwd
+        , date = chrono::Utc::now().format("%Y-%m-%d").to_string()
     )
 }
 
@@ -251,5 +256,13 @@ mod tests {
         let prompt = builder.build();
         // Should not contain anything from .piso/system.md (doesn't exist)
         assert!(!prompt.contains("Project-specific"));
+    }
+
+    #[test]
+    fn date_injected_in_prompt() {
+        let builder = SystemPromptBuilder::new("/tmp");
+        let prompt = builder.build();
+        assert!(prompt.contains("Current date: 20"));
+        assert!(prompt.contains("Current working directory: /tmp"));
     }
 }

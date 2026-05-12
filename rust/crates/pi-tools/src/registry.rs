@@ -93,6 +93,7 @@ mod tests {
                 output: "dummy result".to_string(),
                 is_error: false,
                 duration_ms: None,
+            terminate: false,
             })
         }
     }

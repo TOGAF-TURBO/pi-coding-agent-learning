@@ -54,12 +54,14 @@ impl ToolExecutor for ExtensionTool {
                 output,
                 is_error: false,
                 duration_ms: None,
+            terminate: false,
             }),
             Err(e) => Ok(ToolResult {
                 tool_use_id: String::new(),
                 output: e,
                 is_error: true,
                 duration_ms: None,
+            terminate: false,
             }),
         }
     }

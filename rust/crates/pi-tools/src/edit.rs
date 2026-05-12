@@ -127,6 +127,7 @@ impl ToolExecutor for EditTool {
             },
             is_error: false,
             duration_ms: None,
+            terminate: false,
         })
     }
 }

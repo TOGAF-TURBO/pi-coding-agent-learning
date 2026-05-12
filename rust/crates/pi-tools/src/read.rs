@@ -99,6 +99,7 @@ impl ToolExecutor for ReadTool {
             output: result,
             is_error: false,
             duration_ms: None,
+            terminate: false,
         })
     }
 }

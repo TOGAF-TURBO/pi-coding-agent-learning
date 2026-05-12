@@ -316,6 +316,7 @@ impl AgentLoop {
             // 执行工具调用
             total_tool_calls += response.tool_calls.len();
             let mut tool_results: Vec<ContentBlock> = Vec::new();
+            let mut any_terminate = false;
 
             for tc in &response.tool_calls {
                 self.emit(StreamEvent::ToolCallStart {
@@ -326,10 +327,14 @@ impl AgentLoop {
 
                 let result = self.execute_tool(&tc.name, tc.input.clone()).await;
 
-                let (output, is_error) = match result {
-                    Ok(r) => (r.output, r.is_error),
-                    Err(e) => (format!("Tool execution error: {e}"), true),
+                let (output, is_error, terminated) = match result {
+                    Ok(r) => (r.output, r.is_error, r.terminate),
+                    Err(e) => (format!("Tool execution error: {e}"), true, false),
                 };
+
+                if terminated {
+                    any_terminate = true;
+                }
 
                 self.emit(StreamEvent::ToolCallEnd {
                     index: 0,
@@ -349,6 +354,12 @@ impl AgentLoop {
                 self.fire_tool_call_end(&tc.name, &output, is_error);
 
                 tool_results.push(ContentBlock::tool_result(&tc.id, &output, is_error));
+            }
+
+            // 检查 terminate 信号：所有工具都请求终止时退出循环
+            if any_terminate {
+                tracing::info!("[agent] Tool requested terminate, stopping ReAct loop");
+                break;
             }
 
             // 追加工具结果到会话

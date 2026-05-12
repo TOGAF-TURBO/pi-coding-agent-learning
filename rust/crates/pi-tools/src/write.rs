@@ -104,6 +104,7 @@ impl ToolExecutor for WriteTool {
             ),
             is_error: false,
             duration_ms: None,
+            terminate: false,
         })
     }
 }
