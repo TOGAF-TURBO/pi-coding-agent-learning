@@ -74,18 +74,31 @@ pub fn resolve_file_refs(message: &str, cwd: &Path) -> (String, Vec<FileRef>) {
         let rel = pathdiff::diff_paths(&resolved, cwd).unwrap_or_else(|| resolved.clone());
         let display = rel.to_string_lossy().to_string();
 
-        // 图片文件：base64 编码
+        // 图片文件：base64 编码（大小限制 1MB）
         if let Some(mime) = detect_image_mime(&resolved) {
             if let Ok(bytes) = std::fs::read(&resolved) {
-                refs.push(FileRef {
-                    path: display,
-                    content: format!("[image: {} ({} bytes)]", file_path, bytes.len()),
-                    is_binary: true,
-                    image: Some(ImageData {
-                        mime_type: mime.to_string(),
-                        base64: base64_encode(&bytes),
-                    }),
-                });
+                const MAX_IMAGE_BYTES: usize = 1024 * 1024;
+                if bytes.len() > MAX_IMAGE_BYTES {
+                    refs.push(FileRef {
+                        path: display,
+                        content: format!(
+                            "[image too large: {} ({} bytes, max {} bytes)]",
+                            file_path, bytes.len(), MAX_IMAGE_BYTES
+                        ),
+                        is_binary: true,
+                        image: None,
+                    });
+                } else {
+                    refs.push(FileRef {
+                        path: display,
+                        content: format!("[image: {} ({} bytes)]", file_path, bytes.len()),
+                        is_binary: true,
+                        image: Some(ImageData {
+                            mime_type: mime.to_string(),
+                            base64: base64_encode(&bytes),
+                        }),
+                    });
+                }
                 cleaned = cleaned.replace(full, "");
                 continue;
             }
@@ -269,5 +282,21 @@ mod tests {
         let img = refs[0].image.clone().unwrap();
         assert_eq!(img.mime_type, "image/png");
         assert!(!img.base64.is_empty());
+    }
+
+    #[test]
+    fn large_image_skipped() {
+        let dir = tempfile::tempdir().unwrap();
+        // Create a "fake" png larger than 1MB
+        let big = dir.path().join("big.png");
+        let data = vec![0u8; 1024 * 1024 + 1]; // just over 1MB
+        std::fs::write(&big, &data).unwrap();
+
+        let (msg, refs) = resolve_file_refs(
+            &format!("@{}", big.display()),
+            dir.path(),
+        );
+        assert!(refs[0].image.is_none());
+        assert!(refs[0].content.contains("image too large"));
     }
 }
