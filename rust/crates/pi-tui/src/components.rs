@@ -486,6 +486,7 @@ pub fn render_footer(
 
 /// 渲染全部五个区域。
 /// 渲染全部四个区域。
+#[allow(clippy::too_many_arguments)]
 pub fn render_all(
     f: &mut ratatui::Frame,
     regions: LayoutRegions,

@@ -269,7 +269,7 @@ pub async fn run_interactive(mut cfg: InteractiveConfig) -> Result<()> {
                     let entries = session.entries().to_vec();
                     let count = entries.len();
                     let _mgr = SessionManager::new(
-                        &std::path::PathBuf::from(&agent_ctx.cwd)
+                        std::path::PathBuf::from(&agent_ctx.cwd)
                             .parent()
                             .unwrap_or(std::path::Path::new("."))
                             .join(".piso/sessions"),
@@ -1161,12 +1161,11 @@ async fn handle_slash_command(
             let entries = state.entries.read();
             let mut diff_lines = Vec::new();
             for entry in entries.iter() {
-                if matches!(entry.role, crate::app::ChatRole::Tool { .. }) {
-                    if entry.content.contains("diff --git")
-                        || entry.content.contains("--- a/")
-                    {
-                        diff_lines.push(entry.content.clone());
-                    }
+                if matches!(entry.role, crate::app::ChatRole::Tool { .. })
+                    && (entry.content.contains("diff --git")
+                        || entry.content.contains("--- a/"))
+                {
+                    diff_lines.push(entry.content.clone());
                 }
             }
             drop(entries);

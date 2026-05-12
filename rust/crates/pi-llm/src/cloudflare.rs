@@ -15,15 +15,14 @@ use crate::openai::{build_openai_request, parse_openai_events};
 /// Cloudflare Workers AI / AI Gateway driver。
 ///
 /// 使用 OpenAI 兼容格式，仅需自定义 URL 构建。
+#[derive(Default)]
 pub struct CloudflareDriver {
     client: Client,
 }
 
 impl CloudflareDriver {
     pub fn new() -> Self {
-        Self {
-            client: Client::new(),
-        }
+        Self::default()
     }
 
     /// 根据环境变量构建 base URL。

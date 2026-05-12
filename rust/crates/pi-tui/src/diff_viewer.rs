@@ -35,7 +35,7 @@ pub struct FileDiff {
 }
 
 /// Diff 查看器状态。
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct DiffViewer {
     /// 所有文件的 diff。
     files: Vec<FileDiff>,
@@ -50,12 +50,7 @@ pub struct DiffViewer {
 impl DiffViewer {
     /// 创建空的 diff 查看器。
     pub fn new() -> Self {
-        Self {
-            files: Vec::new(),
-            current_file: 0,
-            scroll_offset: 0,
-            visible: false,
-        }
+        Self::default()
     }
 
     /// 从 unified diff 文本解析。
@@ -135,9 +130,7 @@ impl DiffViewer {
 
         Self {
             files,
-            current_file: 0,
-            scroll_offset: 0,
-            visible: false,
+            ..Default::default()
         }
     }
 

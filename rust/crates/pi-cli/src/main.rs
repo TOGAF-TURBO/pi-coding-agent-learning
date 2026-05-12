@@ -68,7 +68,7 @@ fn main() -> Result<()> {
                         Ok(token) => {
                             let config_dir = pi_cli::config::config_dir()
                                 .unwrap_or_else(|| ".".into());
-                            let auth_path = std::path::PathBuf::from(config_dir).join("auth.json");
+                            let auth_path = config_dir.join("auth.json");
                             pi_cli::oauth::save_token(&token, &auth_path)?;
                             println!("Login successful! Token saved.");
                         }
@@ -82,7 +82,7 @@ fn main() -> Result<()> {
             "logout" => {
                 let config_dir = pi_cli::config::config_dir()
                     .unwrap_or_else(|| ".".into());
-                let auth_path = std::path::PathBuf::from(config_dir).join("auth.json");
+                let auth_path = config_dir.join("auth.json");
                 pi_cli::oauth::clear_token(&auth_path)?;
                 println!("Logged out. Cached token cleared.");
                 return Ok(());

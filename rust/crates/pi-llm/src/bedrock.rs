@@ -82,14 +82,14 @@ impl LlmDriver for BedrockDriver {
             let tools: Vec<_> = request
                 .tools
                 .iter()
-                .filter_map(|t| {
-                    Some(json!({
+                .map(|t| {
+                    json!({
                         "toolSpec": {
                             "name": t.name,
                             "description": t.description,
                             "inputSchema": { "json": t.parameters }
                         }
-                    }))
+                    })
                 })
                 .collect();
             body["toolConfig"] = json!({ "tools": tools });

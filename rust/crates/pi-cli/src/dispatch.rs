@@ -249,8 +249,8 @@ async fn run_print(cli: Cli) -> Result<()> {
     }
 
     // 创建 Agent 循环
-    let provider_display = provider_display_name(&provider);
-    let model_display = format!("{} ({})", &model, &provider_display);
+    let provider_display = provider_display_name(provider);
+    let model_display = format!("{} ({})", model, provider_display);
     let mut agent = AgentLoop::new(session, driver, tools, model)
         .with_api_key(api_key)
         .with_system_prompt(

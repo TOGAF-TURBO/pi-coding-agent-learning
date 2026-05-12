@@ -9,6 +9,7 @@ use pi_types::error::PiError;
 use pi_types::tool::{ToolDefinition, ToolExecutor, ToolResult};
 
 /// 扩展工具 — 从闭包适配到 ToolExecutor。
+#[allow(clippy::type_complexity)]
 pub struct ExtensionTool {
     def: ToolDefinition,
     handler: Arc<dyn Fn(&str) -> Result<String, String> + Send + Sync>,
