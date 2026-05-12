@@ -32,6 +32,11 @@ impl ToolRegistry {
         self.tools.read().get(name).cloned()
     }
 
+    /// 获取工具定义（用于参数校验）。
+    pub fn get_definition(&self, name: &str) -> Option<ToolDefinition> {
+        self.tools.read().get(name).map(|t| t.definition())
+    }
+
     /// 获取所有工具定义（用于发送给 LLM）。
     pub fn definitions(&self) -> Vec<ToolDefinition> {
         self.tools.read().values().map(|t| t.definition()).collect()

@@ -541,6 +541,19 @@ impl AgentLoop {
 
     /// 实际执行工具逻辑。
     async fn execute_tool_inner(&self, name: &str, input: serde_json::Value) -> Result<ToolResult> {
+        // 参数校验：缺失必填字段或类型错误时返回 isError=true
+        if let Some(def) = self.tools.get_definition(name) {
+            if let Err(e) = def.validate_input(&input) {
+                return Ok(ToolResult {
+                    tool_use_id: String::new(),
+                    output: e,
+                    is_error: true,
+                    duration_ms: None,
+                    terminate: false,
+                });
+            }
+        }
+
         match self.tools.get(name) {
             Some(executor) => executor
                 .execute(input)
