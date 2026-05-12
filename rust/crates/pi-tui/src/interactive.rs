@@ -731,6 +731,7 @@ async fn run_agent_turn(
             &ctx.model,
             &ctx.api_key,
             &ctx.base_url,
+            None, // no previous summary available in TUI path
         )
         .await
         {

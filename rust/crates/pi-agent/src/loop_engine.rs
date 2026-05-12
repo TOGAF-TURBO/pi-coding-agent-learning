@@ -661,39 +661,40 @@ impl AgentLoop {
             return Ok(());
         }
 
-        // 保留最后 10 条消息
-        let keep = 10;
-        let total = entries.len();
-        let remove_count = total.saturating_sub(keep);
+        // 从 session 中提取最近的 compaction summary（如果有）
+        let previous_summary = entries.iter().rev().find_map(|e| {
+            if let pi_types::session::SessionEntry::Message(me) = e {
+                if me.role == "assistant" {
+                    if let Some(arr) = me.content.as_array() {
+                        for b in arr {
+                            if b.get("type").and_then(|v| v.as_str()) == Some("text") {
+                                let text = b.get("text").and_then(|v| v.as_str()).unwrap_or("");
+                                if text.contains("## Goal") {
+                                    return Some(text.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            None
+        });
 
-        if remove_count == 0 {
-            return Ok(());
+        let prev_ref = previous_summary.as_deref();
+
+        // 调用 compaction（生成结构化摘要）
+        let result = crate::compaction::compact(
+            &mut self.session,
+            self.driver.as_ref(),
+            &self.model,
+            &self.api_key,
+            &self.base_url,
+            prev_ref,
+        ).await;
+
+        if let Ok(true) = result {
+            tracing::info!("[compaction] Structured summary generated");
         }
-
-        // 创建总结消息替换被移除的内容
-        let _summary = format!(
-            "[Context compacted: removed {} older messages to stay within token budget]",
-            remove_count
-        );
-
-        // 通过 session 的截断方法处理
-        // JsonlSession 没有截断方法，因此我们标记一个 compaction summary
-        let compact_entry = MessageEntry {
-            entry_type: "message".to_string(),
-            id: generate_id(),
-            parent_id: self.session.leaf_id().map(|s| s.to_string()),
-            timestamp: chrono::Utc::now().to_rfc3339(),
-            role: "user".to_string(),
-            content: serde_json::json!([{"type": "text", "text": "{}"}]),
-            model: None,
-            stop_reason: None,
-            usage: None,
-        };
-
-        self.session
-            .append(pi_types::session::SessionEntry::Message(compact_entry))
-            .await
-            .context("Failed to append compaction marker")?;
 
         Ok(())
     }
